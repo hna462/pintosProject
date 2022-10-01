@@ -488,7 +488,24 @@ setup_stack(void **esp, struct process *process)
         if (success) {
             *esp = PHYS_BASE;
 
-            /* 
+            /*
+                            EXAMPLE SETUP STACK
+            Address	Name	Data	                    Type
+            0xbffffffc	    argv[3][...]	bar\0	    char[4]
+            0xbffffff8	    argv[2][...]	foo\0	    char[4]
+            0xbffffff5	    argv[1][...]	-l\0	    char[3]
+            0xbfffffed	    argv[0][...]	/bin/ls\0	char[8]
+            0xbfffffec	    word-align	    0	        uint8_t
+            0xbfffffe8	    argv[4]	        0	        char *
+            0xbfffffe4	    argv[3]	        0xbffffffc	char *
+            0xbfffffe0	    argv[2]	        0xbffffff8	char *
+            0xbfffffdc	    argv[1]	        0xbffffff5	char *
+            0xbfffffd8	    argv[0]	        0xbfffffed	char *
+            0xbfffffd4	    argv	        0xbfffffd8	char **
+            0xbfffffd0	    argc	        4	        int
+            0xbfffffcc	    return address	0	        void (*) ()
+             */
+
             int arg_len;
             void *argv_pointers[process->argc + 1];
 
@@ -506,7 +523,7 @@ setup_stack(void **esp, struct process *process)
             memcpy(*esp, process->program_name, arg_len);
 
             //push word allign padding
-            uint32_t word_align = ((uint32_t) (*esp)) % 4;
+            uint8_t word_align = ((uint32_t) (*esp)) % 4;
             *esp -= word_align;
             memset(*esp, 0x0, word_align);
 

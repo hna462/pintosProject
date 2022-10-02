@@ -10,6 +10,8 @@ struct process_file {
 	struct list_elem elem;
 };
 
+//syscall.h changes
+
 void syscall_init (void);
 void clean_all_files(struct list* files);
 

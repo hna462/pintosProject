@@ -26,7 +26,7 @@ void clean_single_file(struct list* files, int fd);
 void syscall_exit(struct intr_frame *f);
 int syscall_exec(struct intr_frame *f);
 int syscall_wait(struct intr_frame *f);
-int syscall_create(struct intr_frame *f);
+int syscall_creat(struct intr_frame *f);
 int syscall_remove(struct intr_frame *f);
 int syscall_open(struct intr_frame *f);
 int syscall_filesize(struct intr_frame *f);
@@ -36,6 +36,7 @@ void syscall_seek(struct intr_frame *f);
 int syscall_tell(struct intr_frame *f);
 void syscall_close(struct intr_frame *f);
 void syscall_halt(void);
+
 
 /*get wanted value*/
 void pop_stack(int *esp, int *a, int offset){
@@ -51,15 +52,15 @@ void syscall_halt(void){
 static void syscall_handler(struct intr_frame *);
 
 void
-syscall_init(void)
+syscall_init (void)
 {
-    intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall");
+  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
 static void
-syscall_handler(struct intr_frame *f UNUSED)
+syscall_handler (struct intr_frame *f UNUSED)
 {
-    int *p = f->esp;
+  	int *p = f->esp;
 	is_valid_addr(p);
 
  uint32_t* args = ((uint32_t*) f->esp);
@@ -183,3 +184,60 @@ syscall_wait(struct intr_frame *f)
 	pop_stack(f->esp, &child_tid, 1);
 	return process_wait(child_tid);
 }
+
+
+
+int
+syscall_read(struct intr_frame *f)
+{
+	int ret;
+	int size;
+	void *buffer;
+	int fd;
+
+	pop_stack(f->esp, &size, 7);
+	pop_stack(f->esp, &buffer, 6);
+	pop_stack(f->esp, &fd, 5);
+
+	if (!is_valid_addr(buffer))
+		ret = -1;
+
+	if (fd == 0)
+	{
+		int i;
+		uint8_t *buffer = buffer;
+		for (i = 0; i < size; i++)
+			buffer[i] = input_getc();
+		ret = size;
+	}
+	
+	
+
+	return ret;
+}
+
+int
+syscall_write(struct intr_frame *f)
+{
+	int ret;
+	int size;
+	void *buffer;
+	int fd;
+
+	pop_stack(f->esp, &size, 7);
+	pop_stack(f->esp, &buffer, 6);
+	pop_stack(f->esp, &fd, 5);
+
+	if (!is_valid_addr(buffer))
+		ret = -1;
+
+	if (fd == 1)
+	{
+		putbuf(buffer, size);
+		ret = size;
+	}
+	
+
+	return ret;
+}
+

@@ -87,14 +87,19 @@ struct thread {
     uint8_t           *stack;    /* Saved stack pointer. */
     int                priority; /* Priority. */
     struct list_elem   allelem;  /* List element for all threads list. */
+    bool is_finished; /* Is thread finished and ready to be killed */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
 
-#ifdef USERPROG
+    /* Pointer to thread's parent */
+    struct thread* parent; 
+
+// TODO: Remove comments on release. VSCode compaints without these comments
+//#ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir; /* Page directory. */
-#endif
+//#endif
 
     /* Owned by thread.c. */
     unsigned magic; /* Detects stack overflow. */

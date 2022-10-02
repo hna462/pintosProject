@@ -118,9 +118,7 @@ start_process(void *process_)
 int
 process_wait(tid_t child_tid UNUSED)
 {
-    //TODO: Temp implementaion for setup stack development.
-    // The parent will be forever stuck in the READY state never finishing the test...
-    while(true){
+    while(!thread_current()->is_finished){
         thread_yield();
     }
 }
@@ -257,7 +255,8 @@ load(void *process_, void(**eip) (void), void **esp)
     token = strtok_r(NULL, " ", &process->save_ptr)){
         process->tokens[process->argc++] = token;
     }
-    
+    process->argc++; //to account for program_name aka argv[0];
+
     /* Allocate and activate page directory. */
     t->pagedir = pagedir_create();
     if (t->pagedir == NULL) {
@@ -507,15 +506,16 @@ setup_stack(void **esp, struct process *process)
              */
 
             int arg_len;
-            void *argv_pointers[process->argc + 1];
+            void *argv_pointers[process->argc];
 
             //push argvs in reverse order
-            for(int i = process->argc - 1; i >= 0; i--){
+            for(int i = process->argc - 2; i >= 0; i--){
                 arg_len = strlen(process->tokens[i]) + 1;
                 *esp -= arg_len;
                 argv_pointers[i+1] = *esp;
                 memcpy(*esp, process->tokens[i], arg_len);
             }
+
             //push program_name aka argv[0]
             arg_len = strlen(process->program_name) + 1;
             *esp -= arg_len;
@@ -527,14 +527,14 @@ setup_stack(void **esp, struct process *process)
             *esp -= word_align;
             memset(*esp, 0x0, word_align);
 
-            //push last null terminator separating argvs and addresses 
+            // //push last null terminator separating argvs and addresses 
             *esp -= 4;
             *((uint32_t*) *esp) = 0x0;
 
             //push argv pointers in reverse order
             for (int i = process->argc - 1; i >= 0; i--){
                 *esp -= 4;
-                memcpy(*esp, argv_pointers[i], 4);
+                *((void**) *esp) = argv_pointers[i];
             }
 
             //push **argv (argv === &argv[0])

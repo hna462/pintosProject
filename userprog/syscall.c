@@ -60,26 +60,26 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED)
 {
-  	int *p = f->esp;
+	int *p = f->esp;
 	is_valid_addr(p);
 
- uint32_t* args = ((uint32_t*) f->esp);
-  	int system_call = *p;
+	uint32_t* args = ((uint32_t*) f->esp);
+	int system_call = *p;
 	switch (system_call)
 	{
-		case SYS_HALT: syscall_halt(); break;
+		// case SYS_HALT: syscall_halt(); break;
 		case SYS_EXIT: syscall_exit(f); break;
-		case SYS_EXEC: f->eax = syscall_exec(f); break;
-		case SYS_WAIT: f->eax = syscall_wait(f); break;
-		case SYS_CREATE: f->eax = syscall_creat(f); break;
-		case SYS_REMOVE: f->eax = syscall_remove(f); break;
-		case SYS_OPEN: f->eax = syscall_open(f); break;
-		case SYS_FILESIZE: f->eax = syscall_filesize(f); break;
-		case SYS_READ: f->eax = syscall_read(f); break;
+		// case SYS_EXEC: f->eax = syscall_exec(f); break;
+		// case SYS_WAIT: f->eax = syscall_wait(f); break;
+		// case SYS_CREATE: f->eax = syscall_creat(f); break;
+		// case SYS_REMOVE: f->eax = syscall_remove(f); break;
+		// case SYS_OPEN: f->eax = syscall_open(f); break;
+		// case SYS_FILESIZE: f->eax = syscall_filesize(f); break;
+		// case SYS_READ: f->eax = syscall_read(f); break;
 		case SYS_WRITE: f->eax = syscall_write(f); break;
-		case SYS_SEEK: syscall_seek(f); break;
-		case SYS_TELL: f->eax = syscall_tell(f); break;
-		case SYS_CLOSE: syscall_close(f); break;
+		// case SYS_SEEK: syscall_seek(f); break;
+		// case SYS_TELL: f->eax = syscall_tell(f); break;
+		// case SYS_CLOSE: syscall_close(f); break;
 
 		default:
 		printf("Default %d\n",*p);
@@ -96,7 +96,9 @@ exec_process(char *file_name)
 void
 exit_process(int status)
 {
-//TODO
+	thread_current()->parent->is_finished = true;
+	printf("%s: exit(%d)\n",thread_current()->name,0);  //TODO: Implement exit code 
+	thread_exit();
 }
 
 /*test is_valid addr*/
@@ -220,13 +222,10 @@ int
 syscall_write(struct intr_frame *f)
 {
 	int ret;
-	int size;
-	void *buffer;
-	int fd;
-
-	pop_stack(f->esp, &size, 7);
-	pop_stack(f->esp, &buffer, 6);
-	pop_stack(f->esp, &fd, 5);
+	int **sys_args = f->esp;
+	int *size = sys_args[3];
+	void *buffer = sys_args[2];
+	int *fd = sys_args[1];
 
 	if (!is_valid_addr(buffer))
 		ret = -1;

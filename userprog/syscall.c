@@ -101,7 +101,7 @@ exit_process(int status)
 	struct thread * cur_thread = thread_current();
 	struct list_elem *e = NULL;
 	struct child *ch = NULL;
-	enum intr_level old_intr_level = intr_disable();
+	//enum intr_level old_intr_level = intr_disable();
 	for(e = list_begin(parent_children); e != list_end(parent_children); e = list_next(e)){
 		ch = list_entry(e, struct child, elem);
 		//printf("DEBUG exit_process iter curr %d thisThread %d\n", ch->tid, thread_current()->tid);
@@ -111,7 +111,7 @@ exit_process(int status)
 		}
 	}
 	cur_thread->exit_code = status;
-	intr_set_level(old_intr_level);	
+	//intr_set_level(old_intr_level);	
 	thread_exit();
 }
 

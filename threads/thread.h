@@ -123,13 +123,6 @@ struct child{
     int exit_code;
 };
 
-struct args{
-    char *program_name; /* program name === argv[0] */
-    char **tokens; /* argv[1+]... */
-    uint16_t argc; /* number of tokens + program_name */
-    char *save_ptr; /* save_ptr for strtok_r parsing */
-};
-
 /* If false (default), use round-robin scheduler.
  * If true, use multi-level feedback queue scheduler.
  * Controlled by kernel command-line option "-o mlfqs". */

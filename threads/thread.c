@@ -204,7 +204,6 @@ thread_create(const char *name, int priority,
     tid = t->tid = allocate_tid();
     //printf("DEBUG created thread (%s) with tid: %d\n", name, tid);
     /* PROJECT2: USERPROG */
-    t->args = aux;
     struct child* c = palloc_get_page(0);
     c->tid = tid;
     c->waiting = false;
@@ -329,8 +328,6 @@ thread_exit(void)
         }
         
     }
-    palloc_free_page(thread_current()->args->tokens);
-    palloc_free_page(thread_current()->args);
     list_remove(&thread_current()->allelem);
     thread_current()->status = THREAD_DYING;
     schedule();

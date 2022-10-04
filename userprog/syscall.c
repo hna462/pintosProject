@@ -245,20 +245,27 @@ syscall_write(struct intr_frame *f)
 {
 	int ret;
 	int **call_args = f->esp;
-	int *size = call_args[3];
+	int size = call_args[3];
 	void *buffer = call_args[2];
-	int *fd = call_args[1];
+	int fd = call_args[1];
+	if (!is_user_vaddr((uint32_t*) buffer)){
+		exit_process(-1);
+	}
 
-	if (!is_valid_addr(buffer))
-		ret = -1;
-
-	if (fd == 1)
-	{
+	if (fd == 1){
 		putbuf(buffer, size);
 		ret = size;
 	}
-	
-
+	else {
+		struct process_file* fptr = search_fd(&thread_current()->files, fd);
+			if(fptr==NULL)
+				ret = -1;
+			else{
+				acquire_filesys_lock();
+				ret = file_write (fptr->ptr, buffer, size);
+				release_filesys_lock();
+			}
+	}
 	return ret;
 }
 

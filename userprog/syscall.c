@@ -119,9 +119,15 @@ exit_process(int status)
 void *
 is_valid_addr(const void *vaddr)
 {
-	void *page_ptr = NULL;
-	if (!is_user_vaddr(vaddr) || !(page_ptr = pagedir_get_page(thread_current()->pagedir, vaddr)))
+	if (!is_user_vaddr(vaddr)){
+		//printf("DEBUG invalid user addr\n");
+		exit_process(-1);
+		return 0;
+	}
+	void * page_ptr = page_ptr = pagedir_get_page(thread_current()->pagedir, vaddr);
+	if (!page_ptr)
 	{
+		//printf("DEBUG INVALID PAGE PTR\n");
 		exit_process(-1);
 		return 0;
 	}
@@ -204,20 +210,32 @@ syscall_wait(struct intr_frame *f)
 int
 syscall_read(struct intr_frame *f)
 {
+	int *p = f->esp;
 	int ret;
 	int **call_args = f->esp;
-	int *size = call_args[3];
+	int size = call_args[3];
 	void *buffer = call_args[2];
-	int *fd = call_args[1];
-	if (!is_valid_addr(buffer))
-		ret = -1;
-	if (fd == 0)
-	{
+	int fd = call_args[1];
+	if (!is_user_vaddr((uint32_t*) buffer)){
+		exit_process(-1);
+	}
+	if (fd == 0){
 		int i;
 		uint8_t *buffer = buffer;
 		for (i = 0; i < size; i++)
 			buffer[i] = input_getc();
 		ret = size;
+	}
+	else{ // fd != 0
+		struct process_file* fptr = search_fd(&thread_current()->files, fd);
+			if(fptr==NULL)
+				ret = -1;
+			else
+			{
+				acquire_filesys_lock();
+				ret = file_read (fptr->ptr, buffer, size);
+				release_filesys_lock();
+			}
 	}
 	return ret;
 }
@@ -247,7 +265,7 @@ syscall_write(struct intr_frame *f)
 int
 syscall_creat(struct intr_frame *f){
 	int *p = f->esp;
-	is_valid_addr(p+1);
+	is_valid_addr(*(p+1));
 	is_valid_addr(p+2);
 	void *name = *(p+1);
 	int size = *(p+2);
@@ -261,6 +279,7 @@ int
 syscall_open(struct intr_frame *f){
 	int *p = f->esp;
 	is_valid_addr(p+1);
+	is_valid_addr(*(p+1));
 	char *file_name = *(p+1);
 	acquire_filesys_lock();
 	struct file* fptr = filesys_open (file_name);

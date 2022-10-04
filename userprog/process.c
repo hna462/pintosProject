@@ -52,12 +52,12 @@ process_execute(const char *file_name)
     }
     strlcpy(fn_copy, file_name, PGSIZE);
     char *save_ptr;
-    char *program_name = malloc(strlen(file_name)+1);
-    strlcpy(program_name, fn_copy, strlen(file_name)+1);
-    program_name = strtok_r(program_name, " ", save_ptr);
+    char *program_name = palloc_get_page(0);
+    strlcpy(program_name, file_name, PGSIZE);
+    program_name = strtok_r(program_name, " ", &save_ptr);
     /* Create a new thread to execute FILE_NAME. */
     tid = thread_create(program_name, PRI_DEFAULT, start_process, fn_copy);
-    free(program_name);
+    palloc_free_page(program_name);
     if (tid == TID_ERROR) {
         palloc_free_page(fn_copy);
     }else{
@@ -91,7 +91,7 @@ start_process(void *fn_copy_)
 
     thread_current()->parent->load_success = success;
 
-    palloc_free_page (file_name);
+    palloc_free_page (file_name); // TODO
 
     //printf("DEBUG exec sema up for parent: %d\n", thread_current()->parent->tid);
     sema_up(&thread_current()->parent->exec_sema);
@@ -303,12 +303,10 @@ load(void(**eip) (void), void **esp, const char* fn_copy)
     // }
     // t->args->argc++;// to account for argv[0]
 
-    char* program_name = malloc(strlen(fn_copy) + 1);
-    strlcpy(program_name, fn_copy, strlen(fn_copy) + 1);
+    char* program_name = palloc_get_page(0);
+    strlcpy(program_name, fn_copy, PGSIZE);
     char *save_ptr;
     program_name = strtok_r(program_name," ",&save_ptr);
-    printf("DEBUG %s\n", fn_copy);
-    printf("DEBUG %s\n", program_name);
 
     /* Open executable file. */
     file = filesys_open(program_name);
@@ -401,7 +399,7 @@ done:
     //printf("DEBUG load DONE\n");
     //palloc_free_page(process_args);
     release_filesys_lock();
-    free(program_name);
+    palloc_free_page(program_name);
     file_close(file);
     return success;
 }
@@ -555,60 +553,61 @@ setup_stack(void **esp, char *fn_copy)
         success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
         if (success) {
             *esp = PHYS_BASE;
+            char** tokens = palloc_get_page(0);
+            int argc = 0;
+            char *save_ptr;
+            char *token;
+            for (token = strtok_r(fn_copy, " ", &save_ptr);
+            token != NULL;
+            token = strtok_r(NULL, " ", &save_ptr)){
+                tokens[argc++] = token;
+            }
+            int arg_len;
+            void *argv_pointers[argc];
+
+            //push argvs in reverse order
+            for(int i = argc - 1; i >= 0; i--){
+                arg_len = strlen(tokens[i]) + 1;
+                *esp -= arg_len;
+                argv_pointers[i] = *esp;
+                memcpy(*esp, tokens[i], arg_len);
+            }
+
+            //push word allign padding
+            uint8_t word_align = ((uint32_t) (*esp)) % 4;
+            *esp -= word_align;
+            memset(*esp, 0x0, word_align);
+
+            // //push last null terminator separating argvs and addresses 
+            *esp -= 4;
+            *((uint32_t*) *esp) = 0x0;
+
+            //push argv pointers in reverse order
+            for (int i = argc - 1; i >= 0; i--){
+                *esp -= 4;
+                *((void**) *esp) = argv_pointers[i];
+            }
+
+            //push **argv (argv === &argv[0])
+            *esp -= 4;
+            *((void**) *esp) = *esp + 4;
+
+            //push argc
+            *esp -= 4;
+            *((uint32_t*) *esp) = argc;
+
+            //push null pointer for the return address
+            *esp -= 4;
+            *((uint32_t*) *esp) = 0x0;
+
+             palloc_free_page(tokens);
 
         } else {
             palloc_free_page(kpage);
         }
         //hex_dump( *(int*)esp, *esp, 128, true ); // NOTE: uncomment this to check arg passing
     }
-    char** tokens = palloc_get_page(0);
-    int argc = 0;
-    char *save_ptr;
-    char *token;
-    for (token = strtok_r(fn_copy, " ", save_ptr);
-    token != NULL;
-    token = strtok_r(NULL, " ", save_ptr)){
-        tokens[argc++] = token;
-    }
-    int arg_len;
-    void *argv_pointers[argc];
 
-    //push argvs in reverse order
-    for(int i = argc - 1; i >= 0; i--){
-        arg_len = strlen(tokens[i]) + 1;
-        *esp -= arg_len;
-        argv_pointers[i+1] = *esp;
-        memcpy(*esp, tokens[i], arg_len);
-    }
-
-    //push word allign padding
-    uint8_t word_align = ((uint32_t) (*esp)) % 4;
-    *esp -= word_align;
-    memset(*esp, 0x0, word_align);
-
-    // //push last null terminator separating argvs and addresses 
-    *esp -= 4;
-    *((uint32_t*) *esp) = 0x0;
-
-    //push argv pointers in reverse order
-    for (int i = argc - 1; i >= 0; i--){
-        *esp -= 4;
-        *((void**) *esp) = argv_pointers[i];
-    }
-
-    //push **argv (argv === &argv[0])
-    *esp -= 4;
-    *((void**) *esp) = *esp + 4;
-
-    //push argc
-    *esp -= 4;
-    *((uint32_t*) *esp) = argc;
-
-    //push null pointer for the return address
-    *esp -= 4;
-    *((uint32_t*) *esp) = 0x0;
-
-    palloc_free_page(tokens);
 
     return success;
 }

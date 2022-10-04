@@ -197,9 +197,14 @@ thread_create(const char *name, int priority,
     /* Initialize thread. */
     init_thread(t, name, priority);
     tid = t->tid = allocate_tid();
+    //printf("DEBUG created thread (%s) with tid: %d\n", name, tid);
+    /* PROJECT2: USERPROG */
+    t->args = aux;
     struct child* c = palloc_get_page(0);
     c->tid = tid;
-    c->is_done = false;
+    c->waiting = false;
+    sema_init(&c->wait_sema, 0);
+    c->exit_code = t->exit_code;
     list_push_back (&running_thread()->children, &c->elem);
 
 
@@ -300,20 +305,27 @@ thread_tid(void)
 void
 thread_exit(void)
 {
+    //printf("DEBUG thread_exit for thread (%s) with tid: %d\n", thread_current()->name, thread_current()->tid);
     ASSERT(!intr_context());
 
 #ifdef USERPROG
     process_exit();
 #endif
 
+
     /* Remove thread from all threads list, set our status to dying,
      * and schedule another process.  That process will destroy us
      * when it calls thread_schedule_tail(). */
-    while(!list_empty(&thread_current()->children)){
-      struct child *c = list_entry (list_pop_front(&thread_current()->children), struct child, elem);
-      palloc_free_page(c);
-    }
     intr_disable();
+    if (thread_current()->parent->waiting_for != NULL){
+        if (thread_current()->parent->waiting_for->tid == thread_current()->tid){
+            //printf("DEBUG exit sema up fro thread: %d\n", thread_current()->tid);
+            sema_up(&thread_current()->parent->waiting_for->wait_sema);
+        }
+        
+    }
+    palloc_free_page(thread_current()->args->tokens);
+    palloc_free_page(thread_current()->args);
     list_remove(&thread_current()->allelem);
     thread_current()->status = THREAD_DYING;
     schedule();
@@ -488,9 +500,12 @@ init_thread(struct thread *t, const char *name, int priority)
     t->priority = priority;
     t->magic = THREAD_MAGIC;
     t->parent = running_thread();
+    t->load_success = false;
+    t->exit_code = -999; //initial exit code
     list_init (&t->children);
-    sema_init(&t->child_sema, 0 );
-    t->waiting_for_tid = -1; 
+    sema_init(&t->exec_sema,0);
+    t->waiting_for = NULL;
+
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);

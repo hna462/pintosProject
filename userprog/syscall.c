@@ -12,7 +12,7 @@
 #include "threads/vaddr.h"
 #include "filesys/off_t.h"
 #include "kernel/list.h"
-//#include "devices/shutdown.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
 int exec_process(char *file_name);
@@ -98,22 +98,20 @@ void
 exit_process(int status)
 {
 	struct list *parent_children = &thread_current()->parent->children;
+	struct thread * cur_thread = thread_current();
 	struct list_elem *e = NULL;
-
+	struct child *ch = NULL;
+	enum intr_level old_intr_level = intr_disable();
 	for(e = list_begin(parent_children); e != list_end(parent_children); e = list_next(e)){
-		struct child *curr = list_entry(e, struct child, elem);
-		printf("DEBUG exit_process iter curr %d thisThread %d\n", curr->tid, thread_current()->tid);
-		if (curr->tid == thread_current()->tid){
-				curr->is_done = true;
+		ch = list_entry(e, struct child, elem);
+		//printf("DEBUG exit_process iter curr %d thisThread %d\n", ch->tid, thread_current()->tid);
+		if (ch->tid == cur_thread->tid){
+				ch->waiting = true;
+				ch->exit_code = status;
 		}
 	}
-
-	printf("DEBUG parent %d waits for: %d \n", thread_current()->parent->tid, thread_current()->parent->waiting_for_tid);
-	printf("DEBUG cur tid: %d \n", thread_current()->tid);
-	if (thread_current()->parent->waiting_for_tid == thread_current()->tid){
-		sema_up(&thread_current()->parent->child_sema);
-	}
-	printf("%s: exit(%d)\n",thread_current()->name, status); 
+	cur_thread->exit_code = status;
+	intr_set_level(old_intr_level);	
 	thread_exit();
 }
 

@@ -11,3 +11,5 @@ cscope.files
 cscope.out
 tags
 utils/qemu
+.vscode/settings.json
+userprog/gdb.txt

@@ -103,18 +103,29 @@ struct thread {
 
     /* PROJECT2: USERPROG */ 
     struct list children;  /* list of thread's child processes */ 
-    //bool is_done; /* Is thread finished and ready to be killed */
+    struct child *waiting_for; /* currently waiting for */
     struct thread* parent; /* Pointer to thread's parent */
-    tid_t waiting_for_tid;
-    struct semaphore child_sema;
+    struct args *args;
+    struct semaphore exec_sema;
+    bool load_success;
+    int exit_code;
+    
 };
 
 struct child{
     tid_t tid;
     struct list_elem elem;
-    bool is_done;
+    struct semaphore wait_sema;
+    bool waiting;
+    int exit_code;
 };
 
+struct args{
+    char *program_name; /* program name === argv[0] */
+    char **tokens; /* argv[1+]... */
+    uint16_t argc; /* number of tokens + program_name */
+    char *save_ptr; /* save_ptr for strtok_r parsing */
+};
 
 /* If false (default), use round-robin scheduler.
  * If true, use multi-level feedback queue scheduler.

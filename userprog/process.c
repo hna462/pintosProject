@@ -158,6 +158,11 @@ process_exit(void)
     }
     printf("%s: exit(%d)\n",cur->name, exit_code);
 
+    acquire_filesys_lock();
+    file_close(thread_current()->self_file);
+    clean_all_files(&thread_current()->files);
+    release_filesys_lock();
+
     /* Destroy the current process's page directory and switch back
      * to the kernel-only page directory. */
     pd = cur->pagedir;
@@ -273,6 +278,8 @@ load(void(**eip) (void), void **esp)
     bool success = false;
     int i;
 
+    acquire_filesys_lock();
+
     struct args *thread_args = t->args; 
 
     thread_args->argc = 0;
@@ -383,6 +390,7 @@ done:
     /* We arrive here whether the load is successful or not. */
     //printf("DEBUG load DONE\n");
     //palloc_free_page(process_args);
+    release_filesys_lock();
     file_close(file);
     return success;
 }

@@ -109,6 +109,9 @@ struct thread {
     struct semaphore exec_sema;
     bool load_success;
     int exit_code;
+    struct file *self_file; 
+    struct list files;
+    int fd_count; /* count of file descriptors */
     
 };
 

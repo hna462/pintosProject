@@ -47,6 +47,10 @@ struct kernel_thread_frame {
     void        *aux;      /* Auxiliary data for function. */
 };
 
+/* global file system lock */
+struct lock filesys_lock; 
+
+
 /* Statistics. */
 static long long idle_ticks;   /* # of timer ticks spent idle. */
 static long long kernel_ticks; /* # of timer ticks in kernel threads. */
@@ -99,6 +103,7 @@ thread_init(void)
     ASSERT(intr_get_level() == INTR_OFF);
 
     lock_init(&tid_lock);
+    lock_init(&filesys_lock);
     list_init(&ready_list);
     list_init(&all_list);
 
@@ -505,6 +510,9 @@ init_thread(struct thread *t, const char *name, int priority)
     list_init (&t->children);
     sema_init(&t->exec_sema,0);
     t->waiting_for = NULL;
+    list_init (&t->files);
+    t->self_file = NULL;
+    t->fd_count = 2;
 
 
     old_level = intr_disable();
@@ -621,6 +629,16 @@ allocate_tid(void)
     lock_release(&tid_lock);
 
     return tid;
+}
+
+void acquire_filesys_lock()
+{
+  lock_acquire(&filesys_lock);
+}
+
+void release_filesys_lock()
+{
+  lock_release(&filesys_lock);
 }
 
 /* Offset of `stack' member within `struct thread'.

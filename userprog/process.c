@@ -23,14 +23,6 @@
 
 #include <log.h>
 
-/* struct used to pass around cmd's data */
-struct process
-{
-    char *program_name;
-    char **tokens;
-    uint16_t argc;
-    char *save_ptr;
-};
 
 static thread_func start_process NO_RETURN;
 static bool load(void *process_, void(**eip) (void), void **esp);
@@ -44,7 +36,8 @@ process_execute(const char *file_name)
 {
     char *fn_copy;
     tid_t tid;
-    struct process *process = NULL;
+    struct process_args *process_args = NULL;
+    
 
     // NOTE:
     // To see this print, make sure LOGGING_LEVEL in this file is <= L_TRACE (6)
@@ -60,25 +53,30 @@ process_execute(const char *file_name)
     }
     strlcpy(fn_copy, file_name, PGSIZE);
 
-    process = palloc_get_page(0); //TODO: free() properly
-    if (process == NULL){
+    process_args = palloc_get_page(0); //TODO: free() properly
+    if (process_args == NULL){
         return TID_ERROR;
     }
-    process->program_name = strtok_r(fn_copy, " ", &process->save_ptr);
+    process_args->program_name = strtok_r(fn_copy, " ", &process_args->save_ptr);
+
     /* Create a new thread to execute FILE_NAME. */
-    tid = thread_create(process->program_name, PRI_DEFAULT, start_process, process);
+    tid = thread_create(process_args->program_name, PRI_DEFAULT, start_process, process_args);
     if (tid == TID_ERROR) {
         palloc_free_page(fn_copy);
     }
+    printf("DEBUG starting thread: %d\n", tid);
+    sema_down(&thread_current()->child_sema);
+    
     return tid;
 }
 
 /* A thread function that loads a user process and starts it
  * running. */
 static void
-start_process(void *process_)
+start_process(void *process_args_)
 {
     struct intr_frame if_;
+    struct thread *t = thread_current();
     bool success;
 
     log(L_TRACE, "start_process()");
@@ -88,10 +86,11 @@ start_process(void *process_)
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
-    success = load(process_, &if_.eip, &if_.esp);
+    success = load(process_args_, &if_.eip, &if_.esp);
 
+    printf("DEBUG sema up for thread: %d\n", t->tid);
+    sema_up(&t->parent->child_sema);
     /* If load failed, quit. */
-    //palloc_free_page(process_); // TODO: Free process properly
     if (!success) {
         thread_exit();
     }
@@ -116,11 +115,34 @@ start_process(void *process_)
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
 int
-process_wait(tid_t child_tid UNUSED)
+process_wait(tid_t child_tid)
 {
-    while(!thread_current()->is_finished){
-        thread_yield();
+    struct list *children = &thread_current()->children;
+    struct child *found_child = NULL;
+    struct list_elem *e = NULL;
+    for(e = list_begin(children); e != list_end(children); e = list_next(e)){
+        struct child *curr = list_entry(e, struct child, elem);
+        printf("DEBUG iterating curr: %d, looking for: %d\n", curr->tid, child_tid);
+        if (curr->tid == child_tid){
+            found_child = curr;
+            break;
+        }
     }
+    if (found_child == NULL || e == NULL){
+        return -1;
+    } 
+
+    printf("DEBUG setting wait for tid to: %d for this parent: %d \n", found_child->tid, thread_current()->tid);
+    thread_current()->waiting_for_tid = found_child->tid;
+    
+    if (!found_child->is_done){
+        sema_down(&thread_current()->child_sema);
+    }
+
+    int return_code = 0; // TODO: valid return code;
+    list_remove(e);
+
+    return return_code;    
 }
 
 /* Free the current process's resources. */
@@ -130,6 +152,7 @@ process_exit(void)
     struct thread *cur = thread_current();
     uint32_t *pd;
 
+    
     /* Destroy the current process's page directory and switch back
      * to the kernel-only page directory. */
     pd = cur->pagedir;
@@ -145,6 +168,7 @@ process_exit(void)
         pagedir_activate(NULL);
         pagedir_destroy(pd);
     }
+    
 }
 
 /* Sets up the CPU for running user code in the current
@@ -224,7 +248,7 @@ struct Elf32_Phdr {
 #define PF_W 2 /* Writable. */
 #define PF_R 4 /* Readable. */
 
-static bool setup_stack(void **esp, struct process *process);
+static bool setup_stack(void **esp, struct process_args *process_args);
 
 static bool validate_segment(const struct Elf32_Phdr *, struct file *);
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes, uint32_t zero_bytes, bool writable);
@@ -234,7 +258,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage, uint32_t 
  * and its initial stack pointer into *ESP.
  * Returns true if successful, false otherwise. */
 bool
-load(void *process_, void(**eip) (void), void **esp)
+load(void *process_args_, void(**eip) (void), void **esp)
 {
     log(L_TRACE, "load()");
     struct thread *t = thread_current();
@@ -244,18 +268,18 @@ load(void *process_, void(**eip) (void), void **esp)
     bool success = false;
     int i;
 
-    struct process *process = process_; 
+    struct process_args *process_args = process_args_; 
 
-    process->tokens = palloc_get_page(0); //TODO: free() properly
-    if (process->tokens == NULL){
+    process_args->tokens = palloc_get_page(0); //TODO: free() properly
+    if (process_args->tokens == NULL){
         goto done;
     }
-    for(char *token = strtok_r(NULL, " ", &process->save_ptr);
+    for(char *token = strtok_r(NULL, " ", &process_args->save_ptr);
     token != NULL;
-    token = strtok_r(NULL, " ", &process->save_ptr)){
-        process->tokens[process->argc++] = token;
+    token = strtok_r(NULL, " ", &process_args->save_ptr)){
+        process_args->tokens[process_args->argc++] = token;
     }
-    process->argc++; //to account for program_name aka argv[0];
+    process_args->argc++; //to account for program_name aka argv[0];
 
     /* Allocate and activate page directory. */
     t->pagedir = pagedir_create();
@@ -265,9 +289,9 @@ load(void *process_, void(**eip) (void), void **esp)
     process_activate();
 
     /* Open executable file. */
-    file = filesys_open(process->program_name);
+    file = filesys_open(process_args->program_name);
     if (file == NULL) {
-        printf("load: %s: open failed\n", process->program_name);
+        printf("load: %s: open failed\n", process_args->program_name);
         goto done;
     }
 
@@ -279,7 +303,7 @@ load(void *process_, void(**eip) (void), void **esp)
         || ehdr.e_version != 1
         || ehdr.e_phentsize != sizeof(struct Elf32_Phdr)
         || ehdr.e_phnum > 1024) {
-        printf("load: %s: error loading executable\n", process->program_name);
+        printf("load: %s: error loading executable\n", process_args->program_name);
         goto done;
     }
 
@@ -340,7 +364,7 @@ load(void *process_, void(**eip) (void), void **esp)
     }
 
     /* Set up stack. */
-    if (!setup_stack(esp, process)) {
+    if (!setup_stack(esp, process_args)) {
         goto done;
     }
 
@@ -474,7 +498,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
  * user virtual memory. */
 static bool
-setup_stack(void **esp, struct process *process)
+setup_stack(void **esp, struct process_args *process_args)
 {
     uint8_t *kpage;
     bool success = false;
@@ -506,21 +530,21 @@ setup_stack(void **esp, struct process *process)
              */
 
             int arg_len;
-            void *argv_pointers[process->argc];
+            void *argv_pointers[process_args->argc];
 
             //push argvs in reverse order
-            for(int i = process->argc - 2; i >= 0; i--){
-                arg_len = strlen(process->tokens[i]) + 1;
+            for(int i = process_args->argc - 2; i >= 0; i--){
+                arg_len = strlen(process_args->tokens[i]) + 1;
                 *esp -= arg_len;
                 argv_pointers[i+1] = *esp;
-                memcpy(*esp, process->tokens[i], arg_len);
+                memcpy(*esp, process_args->tokens[i], arg_len);
             }
 
             //push program_name aka argv[0]
-            arg_len = strlen(process->program_name) + 1;
+            arg_len = strlen(process_args->program_name) + 1;
             *esp -= arg_len;
             argv_pointers[0] = *esp;
-            memcpy(*esp, process->program_name, arg_len);
+            memcpy(*esp, process_args->program_name, arg_len);
 
             //push word allign padding
             uint8_t word_align = ((uint32_t) (*esp)) % 4;
@@ -532,7 +556,7 @@ setup_stack(void **esp, struct process *process)
             *((uint32_t*) *esp) = 0x0;
 
             //push argv pointers in reverse order
-            for (int i = process->argc - 1; i >= 0; i--){
+            for (int i = process_args->argc - 1; i >= 0; i--){
                 *esp -= 4;
                 *((void**) *esp) = argv_pointers[i];
             }
@@ -543,11 +567,13 @@ setup_stack(void **esp, struct process *process)
 
             //push argc
             *esp -= 4;
-            *((uint32_t*) *esp) = process->argc;
+            *((uint32_t*) *esp) = process_args->argc;
 
             //push null pointer for the return address
             *esp -= 4;
             *((uint32_t*) *esp) = 0x0;
+
+            palloc_free_page(process_args);
 
         } else {
             palloc_free_page(kpage);

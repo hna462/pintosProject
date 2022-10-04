@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -87,13 +88,9 @@ struct thread {
     uint8_t           *stack;    /* Saved stack pointer. */
     int                priority; /* Priority. */
     struct list_elem   allelem;  /* List element for all threads list. */
-    bool is_finished; /* Is thread finished and ready to be killed */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
-
-    /* Pointer to thread's parent */
-    struct thread* parent; 
 
 // TODO: Remove comments on release. VSCode compaints without these comments
 //#ifdef USERPROG
@@ -103,7 +100,21 @@ struct thread {
 
     /* Owned by thread.c. */
     unsigned magic; /* Detects stack overflow. */
+
+    /* PROJECT2: USERPROG */ 
+    struct list children;  /* list of thread's child processes */ 
+    //bool is_done; /* Is thread finished and ready to be killed */
+    struct thread* parent; /* Pointer to thread's parent */
+    tid_t waiting_for_tid;
+    struct semaphore child_sema;
 };
+
+struct child{
+    tid_t tid;
+    struct list_elem elem;
+    bool is_done;
+};
+
 
 /* If false (default), use round-robin scheduler.
  * If true, use multi-level feedback queue scheduler.

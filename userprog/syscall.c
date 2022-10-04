@@ -67,10 +67,10 @@ syscall_handler (struct intr_frame *f UNUSED)
 	int system_call = *p;
 	switch (system_call)
 	{
-		// case SYS_HALT: syscall_halt(); break;
+		case SYS_HALT: syscall_halt(); break;
 		case SYS_EXIT: syscall_exit(f); break;
-		// case SYS_EXEC: f->eax = syscall_exec(f); break;
-		// case SYS_WAIT: f->eax = syscall_wait(f); break;
+		case SYS_EXEC: f->eax = syscall_exec(f); break;
+		case SYS_WAIT: f->eax = syscall_wait(f); break;
 		// case SYS_CREATE: f->eax = syscall_creat(f); break;
 		// case SYS_REMOVE: f->eax = syscall_remove(f); break;
 		// case SYS_OPEN: f->eax = syscall_open(f); break;
@@ -89,15 +89,31 @@ syscall_handler (struct intr_frame *f UNUSED)
 int
 exec_process(char *file_name)
 {
-//TODO
+	tid_t child_tid = process_execute(file_name);
+	return child_tid;
 }
 
 /*exit_process*/
 void
 exit_process(int status)
 {
-	thread_current()->parent->is_finished = true;
-	printf("%s: exit(%d)\n",thread_current()->name,0);  //TODO: Implement exit code 
+	struct list *parent_children = &thread_current()->parent->children;
+	struct list_elem *e = NULL;
+
+	for(e = list_begin(parent_children); e != list_end(parent_children); e = list_next(e)){
+		struct child *curr = list_entry(e, struct child, elem);
+		printf("DEBUG exit_process iter curr %d thisThread %d\n", curr->tid, thread_current()->tid);
+		if (curr->tid == thread_current()->tid){
+				curr->is_done = true;
+		}
+	}
+
+	printf("DEBUG parent %d waits for: %d \n", thread_current()->parent->tid, thread_current()->parent->waiting_for_tid);
+	printf("DEBUG cur tid: %d \n", thread_current()->tid);
+	if (thread_current()->parent->waiting_for_tid == thread_current()->tid){
+		sema_up(&thread_current()->parent->child_sema);
+	}
+	printf("%s: exit(%d)\n",thread_current()->name, status); 
 	thread_exit();
 }
 
@@ -172,9 +188,9 @@ syscall_exec(struct intr_frame *f)
 {
 	char *file_name = NULL;
 	pop_stack(f->esp, &file_name, 1);
-	if (!is_valid_addr(file_name))
+	if (!is_valid_addr(file_name)){
 		return -1;
-
+	}
 	return exec_process(file_name);
 }
 
@@ -212,9 +228,6 @@ syscall_read(struct intr_frame *f)
 			buffer[i] = input_getc();
 		ret = size;
 	}
-	
-	
-
 	return ret;
 }
 

@@ -197,6 +197,11 @@ thread_create(const char *name, int priority,
     /* Initialize thread. */
     init_thread(t, name, priority);
     tid = t->tid = allocate_tid();
+    struct child* c = palloc_get_page(0);
+    c->tid = tid;
+    c->is_done = false;
+    list_push_back (&running_thread()->children, &c->elem);
+
 
     /* Stack frame for kernel_thread(). */
     kf = alloc_frame(t, sizeof *kf);
@@ -304,6 +309,10 @@ thread_exit(void)
     /* Remove thread from all threads list, set our status to dying,
      * and schedule another process.  That process will destroy us
      * when it calls thread_schedule_tail(). */
+    while(!list_empty(&thread_current()->children)){
+      struct child *c = list_entry (list_pop_front(&thread_current()->children), struct child, elem);
+      palloc_free_page(c);
+    }
     intr_disable();
     list_remove(&thread_current()->allelem);
     thread_current()->status = THREAD_DYING;
@@ -478,8 +487,10 @@ init_thread(struct thread *t, const char *name, int priority)
     t->stack = (uint8_t *)t + PGSIZE;
     t->priority = priority;
     t->magic = THREAD_MAGIC;
-    t->is_finished = false;
     t->parent = running_thread();
+    list_init (&t->children);
+    sema_init(&t->child_sema, 0 );
+    t->waiting_for_tid = -1; 
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);

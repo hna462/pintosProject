@@ -105,16 +105,16 @@ struct thread {
     struct list children;  /* list of thread's child processes */ 
     struct child *waiting_for; /* currently waiting for */
     struct thread* parent; /* Pointer to thread's parent */
-    struct args *args;
-    struct semaphore exec_sema;
-    bool load_success;
-    int exit_code;
-    struct file *self_file; 
-    struct list files;
+    struct semaphore exec_sema; /* sema for executing and loading a new child process/thread */
+    bool load_success; /* was load successfull see process.c:start_process */
+    int exit_code; /* exit code/status of the thread */
+    struct file *self_file;  /* file that the thread executes */  
+    struct list files; /* list of files */
     int fd_count; /* count of file descriptors */
     
 };
 
+/* child thread see process.c:process_execute */
 struct child{
     tid_t tid;
     struct list_elem elem;

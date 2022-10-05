@@ -51,17 +51,24 @@ process_execute(const char *file_name)
         return TID_ERROR;
     }
     strlcpy(fn_copy, file_name, PGSIZE);
+    
+    /* copy temp program name to pass into thread_create */
     char *save_ptr;
     char *program_name = palloc_get_page(0);
     strlcpy(program_name, file_name, PGSIZE);
     program_name = strtok_r(program_name, " ", &save_ptr);
+
     /* Create a new thread to execute FILE_NAME. */
     tid = thread_create(program_name, PRI_DEFAULT, start_process, fn_copy);
+
     palloc_free_page(program_name);
+
     if (tid == TID_ERROR) {
         palloc_free_page(fn_copy);
     }
+
     sema_down(&thread_current()->exec_sema);
+
     if (!thread_current()->load_success){
         return -1;
     }
@@ -89,7 +96,8 @@ start_process(void *fn_copy_)
 
     thread_current()->parent->load_success = success;
 
-    palloc_free_page (file_name); // TODO
+    /* free the first copy of the file_name */
+    palloc_free_page (file_name); 
 
     //printf("DEBUG exec sema up for parent: %d\n", thread_current()->parent->tid);
     sema_up(&thread_current()->parent->exec_sema);
@@ -160,6 +168,7 @@ process_exit(void)
     }
     printf("%s: exit(%d)\n",cur->name, exit_code);
 
+    /* close files */
     acquire_filesys_lock();
     file_close(thread_current()->self_file);
     clean_all_files(&thread_current()->files);
@@ -289,18 +298,7 @@ load(void(**eip) (void), void **esp, const char* fn_copy)
     }
     process_activate();
 
-    // /* create and parse thread's args */
-    // t->args = palloc_get_page(0);
-    // t->args->program_name = t->name;
-    // t->args->argc = 0;
-    // t->args->tokens = palloc_get_page(0); 
-    // for(char *token = strtok_r(NULL, " ", &t->args->save_ptr);
-    // token != NULL;
-    // token = strtok_r(NULL, " ", &t->args->save_ptr)){
-    //     t->args->tokens[t->args->argc++] = token;
-    // }
-    // t->args->argc++;// to account for argv[0]
-
+    /* create temp program name copy for loading new process */
     char* program_name = palloc_get_page(0);
     strlcpy(program_name, fn_copy, PGSIZE);
     char *save_ptr;
@@ -392,14 +390,12 @@ load(void(**eip) (void), void **esp, const char* fn_copy)
 
     success = true;
 
+    /* deny writing to file that's being executed */
     file_deny_write(file);
     //printf("DEBUG denying write to file: %d\n", &file);
-
     thread_current()->self_file = file;
-
 done:
     /* We arrive here whether the load is successful or not. */
-    //printf("DEBUG load DONE\n");
     release_filesys_lock();
     palloc_free_page(program_name);
     return success;

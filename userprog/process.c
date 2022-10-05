@@ -394,13 +394,16 @@ load(void(**eip) (void), void **esp, const char* fn_copy)
 
     success = true;
 
+    file_deny_write(file);
+    //printf("DEBUG denying write to file: %d\n", &file);
+
+    thread_current()->self_file = file;
+
 done:
     /* We arrive here whether the load is successful or not. */
     //printf("DEBUG load DONE\n");
-    //palloc_free_page(process_args);
     release_filesys_lock();
     palloc_free_page(program_name);
-    file_close(file);
     return success;
 }
 

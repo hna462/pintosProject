@@ -154,5 +154,7 @@ int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+void acquire_filesys_lock();
+void release_filesys_lock();
 
 #endif /* threads/thread.h */

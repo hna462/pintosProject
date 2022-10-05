@@ -20,7 +20,6 @@ void exit_process(int status);
 void * is_valid_addr(const void *vaddr);
 struct process_file* search_fd(struct list* files, int fd);
 void clean_single_file(struct list* files, int fd);
-// void clean_all_files(struct list* files); // declear in syscall.h used by another c files
 
 
 void syscall_exit(struct intr_frame *f);

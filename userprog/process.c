@@ -60,12 +60,10 @@ process_execute(const char *file_name)
     palloc_free_page(program_name);
     if (tid == TID_ERROR) {
         palloc_free_page(fn_copy);
-    }else{
-        //printf("DEBUG exec sema down for thread: %d\n", thread_current()->tid);
-        sema_down(&thread_current()->exec_sema);
-        if (!thread_current()->load_success){
-            return -1;
-        }
+    }
+    sema_down(&thread_current()->exec_sema);
+    if (!thread_current()->load_success){
+        return -1;
     }
     return tid;
 }

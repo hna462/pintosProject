@@ -110,6 +110,13 @@ exit_process(int status)
 		}
 	}
 	cur_thread->exit_code = status;
+	if (thread_current()->parent->waiting_for != NULL){
+        if (thread_current()->parent->waiting_for->tid == thread_current()->tid){
+            //printf("DEBUG exit sema up fro thread: %d\n", thread_current()->tid);
+            sema_up(&thread_current()->parent->waiting_for->wait_sema);
+        }
+        
+    }
 	//intr_set_level(old_intr_level);	
 	thread_exit();
 }
@@ -247,9 +254,7 @@ syscall_write(struct intr_frame *f)
 	int size = call_args[3];
 	void *buffer = call_args[2];
 	int fd = call_args[1];
-	if (!is_user_vaddr((uint32_t*) buffer)){
-		exit_process(-1);
-	}
+	is_valid_addr(buffer);
 
 	if (fd == 1){
 		putbuf(buffer, size);

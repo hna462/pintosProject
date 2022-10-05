@@ -321,13 +321,6 @@ thread_exit(void)
      * and schedule another process.  That process will destroy us
      * when it calls thread_schedule_tail(). */
     intr_disable();
-    if (thread_current()->parent->waiting_for != NULL){
-        if (thread_current()->parent->waiting_for->tid == thread_current()->tid){
-            //printf("DEBUG exit sema up fro thread: %d\n", thread_current()->tid);
-            sema_up(&thread_current()->parent->waiting_for->wait_sema);
-        }
-        
-    }
     list_remove(&thread_current()->allelem);
     thread_current()->status = THREAD_DYING;
     schedule();

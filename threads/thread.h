@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status {
@@ -91,13 +92,35 @@ struct thread {
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
 
-#ifdef USERPROG
+// TODO: Remove comments on release. VSCode compaints without these comments
+//#ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir; /* Page directory. */
-#endif
+//#endif
 
     /* Owned by thread.c. */
     unsigned magic; /* Detects stack overflow. */
+
+    /* PROJECT2: USERPROG */ 
+    struct list children;  /* list of thread's child processes */ 
+    struct child *waiting_for; /* currently waiting for */
+    struct thread* parent; /* Pointer to thread's parent */
+    struct args *args;
+    struct semaphore exec_sema;
+    bool load_success;
+    int exit_code;
+    struct file *self_file; 
+    struct list files;
+    int fd_count; /* count of file descriptors */
+    
+};
+
+struct child{
+    tid_t tid;
+    struct list_elem elem;
+    struct semaphore wait_sema;
+    bool waiting;
+    int exit_code;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -131,5 +154,7 @@ int thread_get_nice(void);
 void thread_set_nice(int);
 int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
+void acquire_filesys_lock();
+void release_filesys_lock();
 
 #endif /* threads/thread.h */

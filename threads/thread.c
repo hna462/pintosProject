@@ -47,6 +47,10 @@ struct kernel_thread_frame {
     void        *aux;      /* Auxiliary data for function. */
 };
 
+/* global file system lock */
+struct lock filesys_lock; 
+
+
 /* Statistics. */
 static long long idle_ticks;   /* # of timer ticks spent idle. */
 static long long kernel_ticks; /* # of timer ticks in kernel threads. */
@@ -99,6 +103,7 @@ thread_init(void)
     ASSERT(intr_get_level() == INTR_OFF);
 
     lock_init(&tid_lock);
+    lock_init(&filesys_lock);
     list_init(&ready_list);
     list_init(&all_list);
 
@@ -197,6 +202,15 @@ thread_create(const char *name, int priority,
     /* Initialize thread. */
     init_thread(t, name, priority);
     tid = t->tid = allocate_tid();
+    //printf("DEBUG created thread (%s) with tid: %d\n", name, tid);
+    /* PROJECT2: USERPROG */
+    struct child* c = palloc_get_page(0);
+    c->tid = tid;
+    c->waiting = false;
+    sema_init(&c->wait_sema, 0);
+    c->exit_code = t->exit_code;
+    list_push_back (&running_thread()->children, &c->elem);
+
 
     /* Stack frame for kernel_thread(). */
     kf = alloc_frame(t, sizeof *kf);
@@ -295,11 +309,13 @@ thread_tid(void)
 void
 thread_exit(void)
 {
+    //printf("DEBUG thread_exit for thread (%s) with tid: %d\n", thread_current()->name, thread_current()->tid);
     ASSERT(!intr_context());
 
 #ifdef USERPROG
     process_exit();
 #endif
+
 
     /* Remove thread from all threads list, set our status to dying,
      * and schedule another process.  That process will destroy us
@@ -478,6 +494,16 @@ init_thread(struct thread *t, const char *name, int priority)
     t->stack = (uint8_t *)t + PGSIZE;
     t->priority = priority;
     t->magic = THREAD_MAGIC;
+    t->parent = running_thread();
+    t->load_success = false;
+    t->exit_code = -999; //initial exit code
+    list_init (&t->children);
+    sema_init(&t->exec_sema,0);
+    t->waiting_for = NULL;
+    list_init (&t->files);
+    t->self_file = NULL;
+    t->fd_count = 2;
+
 
     old_level = intr_disable();
     list_push_back(&all_list, &t->allelem);
@@ -593,6 +619,16 @@ allocate_tid(void)
     lock_release(&tid_lock);
 
     return tid;
+}
+
+void acquire_filesys_lock()
+{
+  lock_acquire(&filesys_lock);
+}
+
+void release_filesys_lock()
+{
+  lock_release(&filesys_lock);
 }
 
 /* Offset of `stack' member within `struct thread'.

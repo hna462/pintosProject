@@ -174,6 +174,14 @@ process_exit(void)
     clean_all_files(&thread_current()->files);
     release_filesys_lock();
 
+    /* free list of children */
+	while(!list_empty(&cur->children))
+	{
+		struct child *ch = list_entry (list_pop_front(&cur->children), struct child, elem);
+		list_remove(&ch->elem);
+		palloc_free_page(ch);
+	}
+
     /* Destroy the current process's page directory and switch back
      * to the kernel-only page directory. */
     pd = cur->pagedir;

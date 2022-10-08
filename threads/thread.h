@@ -116,11 +116,11 @@ struct thread {
 
 /* child thread see process.c:process_execute */
 struct child{
-    tid_t tid;
+    tid_t tid; /* tid of the child thread */
     struct list_elem elem;
-    struct semaphore wait_sema;
-    bool waiting;
-    int exit_code;
+    struct semaphore wait_sema; /* sema that's used for waiting for child to finish */
+    bool waiting; /* is child being waited for? */
+    int exit_code; /* exit status of the process */
 };
 
 /* If false (default), use round-robin scheduler.

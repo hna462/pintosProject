@@ -1,3 +1,5 @@
+ECE461S Design Document
+
                      +--------------------------+
                      |         EE 461S          |
                      | PROJECT 2: USER PROGRAMS |
@@ -8,8 +10,8 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@utexas.edu>
-FirstName LastName <email@utexas.edu>
+Iurii Rykhlo <iurii.rykhlo@utexas.edu>
+Hemanth Anantha hna462@utexas.edu
 
 ---- PRELIMINARIES ----
 
@@ -28,16 +30,37 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+No new 'struct's, global or static variables, 'typedef's or enumeration were used
+for argument passing. 
+To pass the file_name copy to the setup_stack, we have modified the setup_stack 
+function declaration to take char* fn_copy as argument. 
+static bool setup_stack(void **esp, char* fn_copy);
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+In process_execute, we allocate char* program_name using palloc to pass the program name into thread_create. It is done to avoid messing up the fn_copy with strtok_r which we pass as an argument to start_process
+
+In start_process() we pass the fn_copy to the load() and free fn_copy after loading is finished
+
+In load() we allocate char* program_name again using palloc to pass the program name to filesys_open() to avoid messing up the fn_copy with strtok_r. We pass unmodified fn_copy to setup_stack()
+
+In setup_stack, we parse the fn_copy into tokens. To do that we allocate char** tokens using palloc and then parse tokens using strtok_r while simultaneously incremeting local variable argc for each token
+
+After parsing the tokens ,we push argvs by iterating through tokens in reverse order. For each token, we decrement stack pointer by token length + 1 (to account for null terminator) and then memcpy() the contents of token[i] 
+After pushing the argv[0] we push word align padding. We find it by doing modulo 4 operation (since address is comprised of 4 bytes)
+Next, we push a null to the next address separating argvs and pointers to argvs
+After pushing null, we push the argv pointers in reverse order, argc and one lass null for the return address. After doing all this, we free tokens. fn_copy finally gets freed in start_process after load() is done. 
+
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
 
+Pintos implements strtok_r() but not strtok() to avoid issues with concurrency between different threads. The difference between the two is that the save_ptr for strtok_r() is provided by the caller, and since the kernel in pintos separates the commands into a command line and arguments, we need to specify location of the arguments in order to keep track of each independent thread incase strtok_r() is called for multiple threads.
                              SYSTEM CALLS
                              ============
 
@@ -47,14 +70,62 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+Added these fields to struct thread inside thread.h:
+struct list children;  /* list of thread's child processes */ 
+struct child *waiting_for; /* currently waiting for this child */
+struct thread* parent; /* Pointer to thread's parent */
+struct semaphore exec_sema; /* sema for executing and loading a new child process/thread */
+bool load_success; /* was load successfull see process.c:start_process */
+int exit_code; /* exit code/status of the thread */
+struct file *self_file;  /* file that the thread executes */  
+struct list files; /* list of files */
+int fd_count; /* count of file descriptors. Initially set to 2. First two are stdin and stout and we don’t have stderr*/
+Added this struct inside thread.h. Used for creating child processes of a thread. 
+struct child{
+    tid_t tid; /* tid of the child thread */
+    struct list_elem elem;
+    struct semaphore wait_sema; /* sema that's used for waiting for child to finish */
+    bool waiting; /* is child being waited for? */
+    int exit_code; /* exit status of the process */
+};
+
+Added this struct inside syscall.h to wrap file with its file descriptor
+struct process_file {
+  struct file* ptr; /* pointer to the actual file */
+  int fd; /* file descriptor corresponding to the file */
+  struct list_elem elem;
+};
+
+Added this global variable in thread.c:
+/* global file system lock */
+struct lock filesys_lock; 
+
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+The file descriptors are unique just within a single process. Every process is able to track the list of of its file descriptors(list of struct fd which is stored in struct thread), and the next available fd number, and the fd struct is able to associate the fd number to each specific file. 
 
 ---- ALGORITHMS ----
 
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
+
+First, syscall_handler() will check whether the stack pointer is at valid address.
+If valid, the stack pointer will be dereferenced from which we can get the syscall number.
+if syscall number == 8, syscall_read will be called. Arguments for read can be dereferenced by casting stack pointer to int** like this:
+int **call_args = f->esp;
+int size = call_args[3];
+void *buffer = call_args[2];
+int fd = call_args[1];
+If fd == 0, we are reading from stdin. To implement this, we are doing size iterations of input_getc() from input.c and place the contents into the buffer
+For fd != 0, we use our search_fd() to find the process_file that matches the requested fd. If it is found, we use file_read() to read contents into the process_file. 
+Before calling file_read, we call acquire_filesys_lock() to make sure no other process tries to access a file, and we call release_filesys_lock() after finishing reading
+
+If syscall number == 9, syscall_write will be called. Arguments for write can be dereferenced similarly to how it’s done for syscall_read.
+if fd == 1, we are writing into stdout. To do this, we use putbuf(buffer, size)
+if fd != 1, we use our our search_fd() to find the process_file that matches the requested fd. And then we call file_write on that file under filesys_lock
 
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
@@ -63,8 +134,20 @@ FirstName LastName <email@utexas.edu>
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
 
+If a system call causes a full page of data to be copied from user space into the kernel, the least possible number of inspections is 1, in the case that all the information is stored on a single page (the pointer returning form pagedir_get_page() is enough to get all the stored data from a single inspection). The greatest possible number of inspections is 4096, since the data is parsed byte-by-byte across 4096 pages, resulting in 4096 inspections to get all of the stored data.  
+For a system call that only copies 2 bytes of data, the least is 1: where the two bytes exist on the same page, and the greatest is 2: where the two bytes exist on separate pages. 
+An improvement can be checking the conditions of a valid address,  where we can quickly handle any page faults incase the page locations is invalid.
+
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+in syscall_wait we get tid of the child to be waited for and then call process_wait with child_tid.
+In process_wait we iterate through all children of the thread looking for one that matches the requested tid. 
+If we find such child process, we would set thread_current()->waiting_for to this child to keep track of which child parent is currently waiting. 
+If child’s waiting=False, we would put sema_down on the child’s wait_sema to wait for child to finish execution. 
+When the child process finally exits, inside exit_process syscall we will iterate through parent’s children and
+put sema_up on the child’s wait_sema if exited child is equal to the waiting_for child of the parent. 
+Then child struct will be removed from the child’s list and freed. 
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
@@ -80,12 +163,27 @@ FirstName LastName <email@utexas.edu>
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+To avoid issues with bad pointers, the pointers are first checked for their validity before being used inside syscall.c
+is_valid_addr() function that we added inside syscall.c is used for checking the pointers. This function calls is_user_vaddr()
+to check whether the pointer’s address is in user’s virtual address. is_valid_addr() also checks whether there exists
+kernel virtual address corresponding to pointers virtual address in page directory of the current thread. 
+If is_valid_addr() finds a problem with the given address, it would call process_exit() with error code of -1 to quit the process that was given a bad pointer
+Inside process_exit(), thread_exit() will be called to exit out the thread of the process. A call to thread_exit() will also invoke exit_process() inside process.c
+where the process’s allocated resources are freed. 
+E.G: suppose use calls write with invalid buffer pointer. is_valid_addr() will be called on the pointer to buffer which will detect that it’s a bad pointer and 
+quit the process, thread. 
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
+To make sure that exec does not return before the new executable has completed loading, we do sema_down on the exec_sema of parent thread
+that is starting a new process. Inside start_process() we set success variable to the load() return value for the new executable.
+We deference a parent that called process_execute by using thread_current()->parent and we set parent’s success to success given from calling load()
+and we do sema_up on the parent’s exec_sema after completing loading. 
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
@@ -94,16 +192,40 @@ FirstName LastName <email@utexas.edu>
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+Each child has it’s wait_sema that is initialized to 0
+P calls wait(C) before C exits: 
+	P will see that C.waiting is still set to False and will do sema_down on the child’s wait_sema.
+	Parent waits until child exits and does sema_up on the wait_sema
+P calls wait(C) after C exits:
+	When child exits, it will set its waiting to True and set its exit_code to the exit status.
+	Inside process_wait, the parent will see that child’s waiting is set to True and then it will remove the child from children list
+P terminates before C exits:
+	This cases might be problematic because when child finally exits it will try to access fields of its parent in exit_process()
+	We will implement some checks to prevent this case from causing issues.
+P terminates after C exits:
+	For this case we need to make sure that all the children of a parent are freed properly. We have noticed that child might not be 	freed in this case but it is easy to implement it. 
+One special case is the initial thread because it does not have any parent due to its nature
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+We chose to verify the validity of the user-provided pointer and dereference it in order to handle the memory access, since it was the most intuitive option and was pretty simple to understand and implement. The other way we could have chose to implement access to user memory is by checking if user pointer points below PHYS base and then deference it, while modifying the code for page_fault() in userprog/exception.c to handle an invalid user pointer. This latter option would have tend to be faster, as it takes advantage of the processors MMU, but we ended up choosing the first option as we valued the simple implementation that results in higher reliability across different machines, rather than having code that may vary in performance depending on the processor.
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+Some advantages in our design for file descriptors is that the kernel is aware of all the opened files, allowing for easier access for operations done to such files. The file descriptors are simple and lightweight, and therefore the space needed in the struct thread is minimized as well.
+
+Some disadvantages include the face that it take O(N) time to access a file descriptor, where n in the number of file descriptors for the current thread (iterating through the entire fd list), which could be improved if er decided to store it in an array, in which case the time for access would be O(1). In addition, the fid can suffer from overflow if allocated more than one time for a single process, since the fid is allocated per the entire OS rather than a single process.
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+We never made any changes to the default tid_t. If we were to make a change, we could have changed it to where the we save the tid of the parent in the child process, making the child processes accessible with their own pid.
+Each process has the tid of its thread. Each process corresponds to one thread. Because of this, it is not possible to launch multi-threaded processes. If we allowed processes to have pid independent of tid we would be able
+to create multi-threaded processes.
 
                            SURVEY QUESTIONS
                            ================

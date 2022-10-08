@@ -132,7 +132,6 @@ process_wait(tid_t child_tid)
     struct list *children = &thread_current()->children;
     struct child *ch = NULL;
     struct list_elem *e = NULL;
-    //enum intr_level old_intr_level = intr_disable();
     for(e = list_begin(children); e != list_end(children); e = list_next(e)){
         ch = list_entry(e, struct child, elem);
         //printf("DEBUG iterating curr: %d, looking for: %d\n", ch->tid, child_tid);
@@ -140,7 +139,6 @@ process_wait(tid_t child_tid)
             break;
         }
     }
-    //intr_set_level (old_intr_level);
 
     if (ch == NULL || e == NULL){
         return -1;
@@ -175,6 +173,7 @@ process_exit(void)
     release_filesys_lock();
 
     /* free list of children */
+    //TODO: THIS MAY NOT BE ACTUALLY FREEING CHILDREN BECAUSE WE REMOVE THEM FROM LIST IN PROCESS_WAIT
 	while(!list_empty(&cur->children))
 	{
 		struct child *ch = list_entry (list_pop_front(&cur->children), struct child, elem);

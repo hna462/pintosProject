@@ -5,8 +5,8 @@
 #include "kernel/list.h"
 
 struct process_file {
-	struct file* ptr;
-	int fd;
+	struct file* ptr; /* pointer to the actual file */
+	int fd; /* file descriptor corresponding to the file */
 	struct list_elem elem;
 };
 

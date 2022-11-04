@@ -111,6 +111,9 @@ struct thread {
     struct file *self_file;  /* file that the thread executes */  
     struct list files; /* list of files */
     int fd_count; /* count of file descriptors */
+
+    /* PROJECT3: VM */
+    struct hash *page_table /* page table*/
     
 };
 

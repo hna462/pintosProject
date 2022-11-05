@@ -18,7 +18,8 @@ enum pstatus {
 
 struct page
 {
-    void *vaddr;            /* user virtual address */
+    void *upage;            /* user virtual address */
+    void *kpage;            /* physical frame address. NULL if not HAS_FRAME */
     bool writable;          /* writable or read-only */
     struct thread *thread;  /* thread that owns the page */
     struct hash_elem hash_elem; /* thread's `hash_table' hash element. */
@@ -34,7 +35,7 @@ struct page
 
 bool handle_page_fault(void* fault_addr); /* called in exception.c*/
 struct page* create_page (void *vaddr, bool writable);
-struct page* get_page (const void* vaddr);
+struct page* page_get (const void* vaddr);
 
 hash_hash_func page_hash_func;
 hash_less_func page_less_func;

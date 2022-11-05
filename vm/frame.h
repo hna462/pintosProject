@@ -16,8 +16,8 @@ struct frame
     struct list_elem list_elem;    /* Linked List elem */
     struct hash_elem hash_elem;     /* Hash Table elem  */
 };
-void init_frame_table ();
-void * allocate_frame (enum palloc_flags flags, void *upage);
-void free_frame(void *kpage);
+void frame_table_init ();
+void * frame_allocate (enum palloc_flags flags, void *upage);
+void frame_free(void *kpage);
 
 #endif /* vm/frame.h */

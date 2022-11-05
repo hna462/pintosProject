@@ -105,7 +105,7 @@ main(void)
 
 #ifdef VM
     /* Initialize Frame Table */
-    init_frame_table();
+    frame_table_init();
 #endif
 
     /* Segmentation. */

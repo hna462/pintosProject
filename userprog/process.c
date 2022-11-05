@@ -532,7 +532,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
         // }
 
         /* Create a virtual page entry */
-        if (!create_page_filesys(upage, writable, file, ofs, page_read_bytes, page_zero_bytes)){
+        if (!page_create_from_filesys(upage, writable, file, ofs, page_read_bytes, page_zero_bytes)){
             return false;
         }
         /* Advance. */
@@ -572,7 +572,7 @@ setup_stack(void **esp, char *fn_copy)
 
     log(L_TRACE, "setup_stack()");
 
-    kpage = allocate_frame(PAL_USER | PAL_ZERO, PHYS_BASE - PGSIZE);
+    kpage = frame_allocate(PAL_USER | PAL_ZERO, PHYS_BASE - PGSIZE);
     if (kpage != NULL) {
         success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
         if (success) {
@@ -627,7 +627,7 @@ setup_stack(void **esp, char *fn_copy)
              palloc_free_page(tokens);
 
         } else {
-            free_frame(kpage);
+            frame_free(kpage);
         }
         //hex_dump( *(int*)esp, *esp, 128, true ); // NOTE: uncomment this to check arg passing
     }

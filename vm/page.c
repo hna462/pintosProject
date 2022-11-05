@@ -10,18 +10,18 @@
 #include "threads/palloc.h"
 
 
-static bool install_page(void *upage, void *kpage, bool writable);
+static bool page_install(void *upage, void *kpage, bool writable);
 
 
 /* Get page from the page table by it's virtual address */
 struct page*
-get_page (const void* vaddr){
+page_get (const void* vaddr){
     if (thread_current()->page_table == NULL){
         return NULL;
     }
     struct page p;
     struct hash_elem* e;
-    p.vaddr = (void *) pg_round_down (vaddr);
+    p.upage = (void *) pg_round_down (vaddr);
     e = hash_find (thread_current()->page_table, &p.hash_elem);
     if (e != NULL) {
         return hash_entry (e, struct page, hash_elem);
@@ -32,11 +32,11 @@ get_page (const void* vaddr){
 }
 
 struct page* 
-create_page_filesys (void *vaddr, bool writable, struct file* file, off_t file_offset,
+page_create_from_filesys (void *upage, bool writable, struct file* file, off_t file_offset,
             uint32_t read_bytes, uint32_t zero_bytes){
 
-    ASSERT(vaddr == pg_round_down(vaddr));
-    //printf("DEBUG: create_page_filesys for vaddr: %p\n", vaddr);
+    ASSERT(upage == pg_round_down(upage));
+    //printf("DEBUG: page_create_from_filesys for vaddr: %p\n", vaddr);
     struct thread *t = thread_current();
     struct page *p;
     p = (struct page*) malloc(sizeof(struct page));
@@ -47,7 +47,8 @@ create_page_filesys (void *vaddr, bool writable, struct file* file, off_t file_o
     }
 
     p->pstatus = FROM_FILE;
-    p->vaddr = vaddr;
+    p->upage = upage;
+    p->kpage = NULL;
     p->writable = writable;
     p->thread = t;
     // TODO SWAP Info: which block? 
@@ -67,14 +68,14 @@ create_page_filesys (void *vaddr, bool writable, struct file* file, off_t file_o
 }
 
 bool
-read_page_from_filesys(struct page *p, void *kpage){
+page_read_from_file(struct page *p){
     ASSERT(p->file_bytes + p->zero_bytes == PGSIZE);
     file_seek (p->file, p->file_offset);
-    int bytes_read = file_read(p->file, kpage, p->file_bytes);
+    int bytes_read = file_read(p->file, p->kpage, p->file_bytes);
     if (bytes_read != (int)p->file_bytes){
         return false;
     }
-    memset(kpage + bytes_read, 0, p->zero_bytes);
+    memset(p->kpage + bytes_read, 0, p->zero_bytes);
     return true;
 }
 
@@ -82,7 +83,7 @@ bool
 handle_page_fault (void* fault_addr){
     fault_addr = pg_round_down(fault_addr);
     //printf("DEBUG: handle_page_fault for %p \n", fault_addr);
-    struct page *p = get_page(fault_addr);
+    struct page *p = page_get(fault_addr);
     if (p == NULL){
         return false;
     }
@@ -91,11 +92,10 @@ handle_page_fault (void* fault_addr){
         return true;
     }
 
-    void* upage = p->vaddr;
-    void* kpage = allocate_frame(PAL_USER, upage);
+    p->kpage = frame_allocate(PAL_USER, p->upage);
     //printf("DEBUG: handle_page_fault upage: %p kpage: %p\n", upage, kpage);
-    read_page_from_filesys(p, kpage);
-    bool success = install_page(upage, kpage, p->writable);
+    page_read_from_file(p);
+    bool success = page_install(p->upage, p->kpage, p->writable);
     if (success){
         p->pstatus = HAS_FRAME;
     }
@@ -103,11 +103,10 @@ handle_page_fault (void* fault_addr){
     return success;
 }
 
-
 unsigned
 page_hash_func(const struct hash_elem *e, void *aux UNUSED){
     const struct page *p = hash_entry(e, struct page, hash_elem);
-    return ((uintptr_t) p->vaddr) >> PGBITS;
+    return ((uintptr_t) p->upage) >> PGBITS;
 }
 
 /* to compare two hash elements. Return true if page A precedes page B.*/
@@ -116,12 +115,12 @@ page_less_func(const struct hash_elem *a_, const struct hash_elem *b_,
            void *aux UNUSED){
   const struct page *a = hash_entry (a_, struct page, hash_elem);
   const struct page *b = hash_entry (b_, struct page, hash_elem);
-  return a->vaddr < b->vaddr;
+  return a->upage < b->upage;
 }
 
-/* copy pasted from process.c */
+/* copy pasted install_page from process.c */
 static bool
-install_page(void *upage, void *kpage, bool writable)
+page_install(void *upage, void *kpage, bool writable)
 {
     struct thread *t = thread_current();
 

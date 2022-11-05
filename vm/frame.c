@@ -11,13 +11,14 @@
 static struct lock frame_lock;
 static struct list frame_list; 
 static struct hash frame_table;
-
+static struct list_elem *clock_ptr; /* clock algorithm pointer */
 
 static unsigned frame_hash_func(const struct hash_elem *elem, void *aux);
 static bool  frame_less_func(const struct hash_elem *, const struct hash_elem *, void *aux);
+struct frame * find_frame_to_evict(struct thread*);
 
 void
-init_frame_table ()
+frame_table_init ()
 {
   lock_init (&frame_lock);
   list_init (&frame_list);
@@ -26,7 +27,7 @@ init_frame_table ()
 
 /* Get frame from the frame table by it's kernel page */
 struct frame*
-get_frame (const void* kpage){
+frame_get (const void* kpage){
     struct frame temp_frame;
     temp_frame.kpage = kpage;
     struct hash_elem *h = hash_find (&frame_table, &(temp_frame.hash_elem));
@@ -38,14 +39,24 @@ get_frame (const void* kpage){
     }
 }
 
-void * allocate_frame (enum palloc_flags flags, void *upage){
+void * frame_allocate (enum palloc_flags flags, void *upage){
 
     lock_acquire(&frame_lock);
 
     void* kpage = palloc_get_page (PAL_USER | flags);
     if (kpage == NULL){
-        //TODO eviction.
-        return kpage;
+        struct frame *evicted_frame = find_frame_to_evict(thread_current());
+        
+        /* was evicted frame dirty? TODO do something with this information */
+        // bool is_dirty = pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->upage) ||
+        //                 pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->kpage);
+        //TODO Swap
+
+        frame_free(evicted_frame->kpage);
+        
+        /* let's try again */
+        kpage = palloc_get_page (PAL_USER | flags);
+        ASSERT(kpage != NULL);
     }
 
     struct frame *frame = malloc(sizeof(struct frame));
@@ -68,14 +79,14 @@ void * allocate_frame (enum palloc_flags flags, void *upage){
 }
 
 void
-free_frame(void *kpage){
+frame_free(void *kpage){
     ASSERT (lock_held_by_current_thread(&frame_lock) == true);
     ASSERT (is_kernel_vaddr(kpage));
     ASSERT (pg_round_down (kpage) == kpage);
 
     lock_acquire(&frame_lock);
 
-    struct frame *f = get_frame(kpage);
+    struct frame *f = frame_get(kpage);
     hash_delete (&frame_table, &f->hash_elem);
     list_remove (&f->list_elem);
     palloc_free_page(kpage);
@@ -84,7 +95,42 @@ free_frame(void *kpage){
     lock_release(&frame_lock);
 }
 
+struct frame *
+find_frame_to_evict(struct thread* t){
+    size_t table_size = list_size(&frame_list);
+    if (table_size == 0){
+        PANIC("Tried to evict a frame, but frame table is empty");
+    }
 
+    /* Go through the "clock" 2 times. More iterations would be redundant. */
+    for (int i = 0; i <= 2*table_size; ++i){
+
+        /* If clock_ptr is NULL(not initialized yet) or reached end, we set it 
+           to the begging of the list */
+        if (clock_ptr == NULL || clock_ptr == list_end(&frame_list)){
+            clock_ptr = list_begin(&frame_list);
+        }
+        /* Get Next frame in the clock */
+        else{
+            clock_ptr = list_next(clock_ptr);
+        }
+
+        struct frame *cur_frame = list_entry(clock_ptr, struct frame, list_elem);
+        if (cur_frame->pinned){
+            continue;
+        }
+        else if (pagedir_is_accessed(t->pagedir, cur_frame->upage)){
+            pagedir_set_accessed(t->pagedir, cur_frame->upage, false);
+        }
+        /* Found frame to evict */
+        /* make sure frame is valid*/
+        ASSERT(cur_frame != NULL && cur_frame->kpage != NULL && cur_frame->thread != NULL);
+        /* make sure the frame has not been cleared already */
+        ASSERT(cur_frame->thread->pagedir != (void*) 0xcccccccc);
+        return cur_frame;
+    }
+    PANIC("Tried to evict a frame, but no frame is available");
+}
 
 static unsigned frame_hash_func(const struct hash_elem *elem, void *aux UNUSED){
   struct frame *entry = hash_entry(elem, struct frame, hash_elem);

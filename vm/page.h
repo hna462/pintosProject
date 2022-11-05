@@ -17,7 +17,8 @@ struct page
 
     struct file *file;          /* File */
     off_t file_offset;          /* File Offset */
-    off_t file_bytes;           /* Bytes to read/write */
+    uint32_t file_bytes;         /* Bytes to read/write */
+    uint32_t zero_bytes;         /* File zero bytes*/
 };
 
 

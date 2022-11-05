@@ -152,7 +152,7 @@ page_fault(struct intr_frame *f)
     if (user && not_present && is_user_vaddr(fault_addr) && fault_addr > USER_VADDR_BOTTOM){
         load_page_success = handle_page_fault(fault_addr);
     }
-    printf("DEBUG: exception.c load_page_success: %d for addr: %p\n", load_page_success, fault_addr);
+    //printf("DEBUG: exception.c load_page_success: %d for addr: %p\n", load_page_success, fault_addr);
     if (load_page_success == false){
         printf("Page fault at %p: %s error %s page in %s context.\n",
            fault_addr,

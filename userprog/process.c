@@ -531,15 +531,8 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
         // }
 
         /* Create a virtual page entry */
-        struct page *p = create_page(upage, !writable);
-        printf("DEBUG: process.c: created page: %p\n", p);
-        if (p == NULL){
+        if (!create_page_filesys(upage, !writable, file, ofs, page_read_bytes, page_zero_bytes)){
             return false;
-        }
-        if (page_read_bytes > 0){
-            p->file = file;
-            p->file_offset = ofs;
-            p->file_bytes = page_read_bytes;
         }
         /* Advance. */
         ofs += page_read_bytes;

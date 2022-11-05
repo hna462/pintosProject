@@ -8,6 +8,14 @@
 /* max size of process stack*/
 #define STACK_MAX_SIZE 8 * (1024 * 1024) /* 8 Megabytes */
 
+/* Current status of the page: */
+enum pstatus {
+  ZERO_PAGE,        /* All zero page */
+  HAS_FRAME,         /* Is present in physical memory */
+  ON_SWAP,          /* Is in swap memory */
+  FROM_FILE,           /* Came from filesys */
+};
+
 struct page
 {
     void *vaddr;            /* user virtual address */
@@ -19,6 +27,8 @@ struct page
     off_t file_offset;          /* File Offset */
     uint32_t file_bytes;         /* Bytes to read/write */
     uint32_t zero_bytes;         /* File zero bytes*/
+
+    enum pstatus pstatus;
 };
 
 

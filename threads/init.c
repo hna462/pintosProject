@@ -103,6 +103,11 @@ main(void)
     malloc_init();
     paging_init();
 
+#ifdef VM
+    /* Initialize Frame Table */
+    init_frame_table();
+#endif
+
     /* Segmentation. */
 #ifdef USERPROG
     tss_init();

@@ -1,4 +1,5 @@
 #include "vm/page.h"
+#include "vm/frame.h"
 #include <stdio.h>
 #include <string.h>
 #include "filesys/file.h"
@@ -33,24 +34,23 @@ get_page (const void* vaddr){
 struct page* 
 create_page_filesys (void *vaddr, bool writable, struct file* file, off_t file_offset,
             uint32_t read_bytes, uint32_t zero_bytes){
+
     ASSERT(vaddr == pg_round_down(vaddr));
     //printf("DEBUG: create_page_filesys for vaddr: %p\n", vaddr);
     struct thread *t = thread_current();
     struct page *p;
     p = (struct page*) malloc(sizeof(struct page));
 
-    // if ((vaddr > PHYS_BASE - STACK_MAX_SIZE) && (t->user_esp - 32 < address))
-
     /* allocation failed */
     if (p == NULL){
         return false;
     }
 
+    p->pstatus = FROM_FILE;
     p->vaddr = vaddr;
     p->writable = writable;
     p->thread = t;
-    //TODO: State: in frame / in swap / in file (elf file)
-    // SWAP Info: which block? 
+    // TODO SWAP Info: which block? 
     p->file = file;
     p->file_offset = file_offset;
     p->file_bytes = read_bytes;
@@ -59,6 +59,7 @@ create_page_filesys (void *vaddr, bool writable, struct file* file, off_t file_o
     /* hash_insert returns notNULL if elem is already present */
     if (hash_insert(t->page_table, &p->hash_elem) != NULL){
         free(p);
+        PANIC("Tried to insert a duplicate page table entry");
         return false;
     }
 
@@ -67,12 +68,12 @@ create_page_filesys (void *vaddr, bool writable, struct file* file, off_t file_o
 
 bool
 read_page_from_filesys(struct page *p, void *kpage){
+    ASSERT(p->file_bytes + p->zero_bytes == PGSIZE);
     file_seek (p->file, p->file_offset);
     int bytes_read = file_read(p->file, kpage, p->file_bytes);
     if (bytes_read != (int)p->file_bytes){
         return false;
     }
-    ASSERT(p->file_bytes + p->zero_bytes == PGSIZE);
     memset(kpage + bytes_read, 0, p->zero_bytes);
     return true;
 }
@@ -82,16 +83,22 @@ handle_page_fault (void* fault_addr){
     fault_addr = pg_round_down(fault_addr);
     //printf("DEBUG: handle_page_fault for %p \n", fault_addr);
     struct page *p = get_page(fault_addr);
-    //printf("DEBUG: hange_page_fault. get_page: %p \n", p);
     if (p == NULL){
         return false;
     }
+    if (p->pstatus == HAS_FRAME){
+        //printf("DEBUG: handle_page_fault HAS FRAME ALREADY");
+        return true;
+    }
+
     void* upage = p->vaddr;
-    void* kpage = palloc_get_page(PAL_USER);
+    void* kpage = allocate_frame(PAL_USER, upage);
     //printf("DEBUG: handle_page_fault upage: %p kpage: %p\n", upage, kpage);
     read_page_from_filesys(p, kpage);
-    bool writable = true;
-    bool success = install_page(upage, kpage, writable);
+    bool success = install_page(upage, kpage, p->writable);
+    if (success){
+        p->pstatus = HAS_FRAME;
+    }
     //printf("DEBUG: handle_page_fault success: %d\n", success);
     return success;
 }
@@ -112,7 +119,7 @@ page_less_func(const struct hash_elem *a_, const struct hash_elem *b_,
   return a->vaddr < b->vaddr;
 }
 
-/* Copied from process.c */
+/* copy pasted from process.c */
 static bool
 install_page(void *upage, void *kpage, bool writable)
 {

@@ -46,7 +46,7 @@ void * frame_allocate (enum palloc_flags flags, void *upage){
     void* kpage = palloc_get_page (PAL_USER | flags);
     if (kpage == NULL){
         struct frame *evicted_frame = find_frame_to_evict(thread_current());
-        
+
         /* was evicted frame dirty? TODO do something with this information */
         // bool is_dirty = pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->upage) ||
         //                 pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->kpage);
@@ -130,6 +130,26 @@ find_frame_to_evict(struct thread* t){
         return cur_frame;
     }
     PANIC("Tried to evict a frame, but no frame is available");
+}
+
+static void
+frame_set_pinned(void *kpage, bool new_val){
+
+    lock_acquire(&frame_lock);
+
+    struct frame *f = frame_get(kpage);
+    f->pinned = new_val;
+
+    lock_release(&frame_lock);
+}
+
+void
+frame_pin(void *kpage){
+    frame_set_pinned(kpage, true);
+}
+
+frame_unpin(void *kpage){
+    frame_set_pinned(kpage, false);
 }
 
 static unsigned frame_hash_func(const struct hash_elem *elem, void *aux UNUSED){

@@ -67,20 +67,50 @@ page_create_from_filesys (void *upage, bool writable, struct file* file, off_t f
     return true;
 }
 
+struct page* 
+page_create_zeropage (void *upage){
+
+    struct thread *t = thread_current();
+    struct page *p;
+    p = (struct page*) malloc(sizeof(struct page));
+
+    /* allocation failed */
+    if (p == NULL){
+        return false;
+    }
+
+    p->pstatus = ZERO_PAGE;
+    p->upage = upage;
+    p->kpage = NULL;
+    p->thread = t;
+    // TODO SWAP Info: which block? 
+
+    /* hash_insert returns notNULL if elem is already present */
+    if (hash_insert(t->page_table, &p->hash_elem) != NULL){
+        free(p);
+        PANIC("Tried to insert a duplicate page table entry");
+        return false;
+    }
+
+    return true;
+}
+
 bool
-page_read_from_file(struct page *p){
+page_read_from_file(struct page *p, void *kpage){
+
     ASSERT(p->file_bytes + p->zero_bytes == PGSIZE);
     file_seek (p->file, p->file_offset);
-    int bytes_read = file_read(p->file, p->kpage, p->file_bytes);
+    int bytes_read = file_read(p->file, kpage, p->file_bytes);
     if (bytes_read != (int)p->file_bytes){
         return false;
     }
-    memset(p->kpage + bytes_read, 0, p->zero_bytes);
+    memset(kpage + bytes_read, 0, p->zero_bytes);
     return true;
 }
 
 bool
 handle_page_fault (void* fault_addr){
+
     fault_addr = pg_round_down(fault_addr);
     //printf("DEBUG: handle_page_fault for %p \n", fault_addr);
     struct page *p = page_get(fault_addr);
@@ -92,15 +122,46 @@ handle_page_fault (void* fault_addr){
         return true;
     }
 
-    p->kpage = frame_allocate(PAL_USER, p->upage);
-    //printf("DEBUG: handle_page_fault upage: %p kpage: %p\n", upage, kpage);
-    page_read_from_file(p);
-    bool success = page_install(p->upage, p->kpage, p->writable);
-    if (success){
-        p->pstatus = HAS_FRAME;
+    void* new_kpage = frame_allocate(PAL_USER, p->upage);
+    /* Could not allocate a frame for this page */
+    if (new_kpage == NULL){
+        return false;
     }
-    //printf("DEBUG: handle_page_fault success: %d\n", success);
-    return success;
+
+    bool writable = true;
+
+    switch (p->pstatus){
+        case HAS_FRAME:
+            PANIC("A new frame was allocated for page that has frame already");
+            break;
+        case ZERO_PAGE:
+            memset(new_kpage, 0, PGSIZE);
+            break;
+        case ON_SWAP:
+            //TODO: Load from swap
+            break;
+        case FROM_FILE:
+            /* Handle not being able to read from file*/
+            if (!page_read_from_file(p, new_kpage)){
+                //TODO: free frame and page
+                return false;
+            }
+            writable = p->writable;
+            break;
+        default:
+            PANIC("Page with undefined status.");
+    }
+
+    if(!page_install(p->upage, new_kpage, writable)){
+        //TODO: free frame and page
+        return false;
+    }
+    pagedir_set_dirty (p->thread->pagedir, new_kpage, false);
+    frame_unpin(new_kpage);
+    p->kpage = new_kpage;
+    p->pstatus = HAS_FRAME;
+
+    return true;
 }
 
 unsigned

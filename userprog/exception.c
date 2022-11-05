@@ -3,9 +3,11 @@
 
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-#include "threads/vaddr.h"
 #include "userprog/exception.h"
 #include "userprog/gdt.h"
+#include "vm/page.h"
+#include "threads/vaddr.h"
+
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -149,10 +151,14 @@ page_fault(struct intr_frame *f)
     /* Did we load a page in this page_fault? */
     bool load_page_success = false;
 
-    if (user && not_present && is_user_vaddr(fault_addr) && fault_addr > USER_VADDR_BOTTOM){
+    bool valid_stack_addr =  ((PHYS_BASE - pg_round_down(fault_addr)) <= STACK_MAX_SIZE && (uint32_t*)fault_addr >= (f->esp - 32));
+    if (not_present && fault_addr > USER_VADDR_BOTTOM && is_user_vaddr(fault_addr)){
+        if (page_get(pg_round_down(fault_addr)) == NULL && valid_stack_addr){
+            page_create_zeropage (pg_round_down(fault_addr));
+        }
         load_page_success = handle_page_fault(fault_addr);
     }
-    //printf("DEBUG: exception.c load_page_success: %d for addr: %p\n", load_page_success, fault_addr);
+
     if (load_page_success == false){
         printf("Page fault at %p: %s error %s page in %s context.\n",
            fault_addr,

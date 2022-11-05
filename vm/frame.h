@@ -20,4 +20,7 @@ void frame_table_init ();
 void * frame_allocate (enum palloc_flags flags, void *upage);
 void frame_free(void *kpage);
 
+void frame_pin(void *kpage);
+void frame_unpin(void *kpage);
+
 #endif /* vm/frame.h */

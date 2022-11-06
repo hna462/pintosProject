@@ -159,5 +159,6 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 void acquire_filesys_lock();
 void release_filesys_lock();
+void release_filesys_lock_if_held();
 
 #endif /* threads/thread.h */

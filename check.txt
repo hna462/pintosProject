@@ -66,7 +66,7 @@ pass tests/vm/pt-grow-pusha
 pass tests/vm/pt-grow-bad
 pass tests/vm/pt-big-stk-obj
 pass tests/vm/pt-bad-addr
-FAIL tests/vm/pt-bad-read
+pass tests/vm/pt-bad-read
 pass tests/vm/pt-write-code
 pass tests/vm/pt-write-code2
 pass tests/vm/pt-grow-stk-sc
@@ -89,4 +89,4 @@ pass tests/filesys/base/sm-seq-random
 pass tests/filesys/base/syn-read
 pass tests/filesys/base/syn-remove
 pass tests/filesys/base/syn-write
-2 of 90 tests failed.
+1 of 90 tests failed.

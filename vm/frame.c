@@ -47,16 +47,18 @@ void * frame_allocate (enum palloc_flags flags, void *upage){
 
     void* kpage = palloc_get_page (PAL_USER | flags);
     if (kpage == NULL){
+        /* Could not allocate frame - find frame to evict */
         struct frame *evicted_frame = find_frame_to_evict(thread_current());
 
         /* was evicted frame dirty? TODO do something with this information */
         // bool is_dirty = pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->upage) ||
         //                 pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->kpage);
        
+        pagedir_clear_page(evicted_frame->thread->pagedir, evicted_frame->upage);
         size_t swap_slot = swap_out(evicted_frame->kpage);
         page_set_on_swap(evicted_frame->upage, swap_slot);
 
-        frame_free(evicted_frame->kpage, true);
+        frame_free(evicted_frame->kpage, true, false);
         
         /* let's try again */
         kpage = palloc_get_page (PAL_USER | flags);
@@ -79,10 +81,16 @@ void * frame_allocate (enum palloc_flags flags, void *upage){
     return frame->kpage;
 }
 
+/* free_kpage: flag that sets whether the actual frame kpage should be evicted or not
+   with_lock: flag that sets whether frame free is performed with a lock
+    */
 void
-frame_free(void *kpage, bool free_kpage){
+frame_free(void *kpage, bool free_kpage, bool with_lock){
 
-    lock_acquire(&frame_lock);
+    if (with_lock){
+        lock_acquire(&frame_lock);
+    }
+    
 
     ASSERT (lock_held_by_current_thread(&frame_lock) == true);
     ASSERT (is_kernel_vaddr(kpage));
@@ -96,7 +104,9 @@ frame_free(void *kpage, bool free_kpage){
     }
     free(f);
 
-    lock_release(&frame_lock);
+    if (with_lock){
+        lock_release(&frame_lock);
+    }
 }
 
 struct frame *
@@ -125,6 +135,7 @@ find_frame_to_evict(struct thread* t){
         }
         else if (pagedir_is_accessed(t->pagedir, cur_frame->upage)){
             pagedir_set_accessed(t->pagedir, cur_frame->upage, false);
+            continue;
         }
         /* Found frame to evict */
         /* make sure frame is valid*/

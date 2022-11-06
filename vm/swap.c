@@ -26,7 +26,7 @@ return the index of the written slot
 */
 size_t
 swap_out(void* kpage){
-    printf("DEBUG: swap_out: %p\n", kpage);
+    //printf("DEBUG: swap_out: %p\n", kpage);
     /* find available region */
     size_t swap_slot = bitmap_scan(swap_bitmap, 0, 1, true);
     ASSERT(swap_slot != BITMAP_ERROR);
@@ -45,7 +45,7 @@ read contents from block at swap_slot into the frame
 */
 void
 swap_in(size_t swap_slot, void *kpage){
-    printf("DEBUG: swap_in: %p\n", kpage);
+    //printf("DEBUG: swap_in: %p\n", kpage);
     ASSERT(swap_slot < swap_size);
     /* make sure bitmap at slot index is defined */
     ASSERT(bitmap_test(swap_bitmap, swap_slot) == false);

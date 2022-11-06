@@ -623,7 +623,7 @@ setup_stack(void **esp, char *fn_copy)
              palloc_free_page(tokens);
 
         } else {
-            frame_free(kpage, true);
+            frame_free(kpage, true, true);
         }
         //hex_dump( *(int*)esp, *esp, 128, true ); // NOTE: uncomment this to check arg passing
     }
@@ -649,5 +649,6 @@ install_page(void *upage, void *kpage, bool writable)
     /* Verify that there's not already a page at that virtual
      * address, then map our page there. */
     return pagedir_get_page(t->pagedir, upage) == NULL
-           && pagedir_set_page(t->pagedir, upage, kpage, writable);
+           && pagedir_set_page(t->pagedir, upage, kpage, writable)
+           && page_create_with_frame(upage, kpage, writable);
 }

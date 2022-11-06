@@ -18,7 +18,7 @@ struct frame
 };
 void frame_table_init ();
 void * frame_allocate (enum palloc_flags flags, void *upage);
-void frame_free(void *kpage, bool free_kpage);
+void frame_free(void *kpage, bool free_kpage, bool with_lock);
 
 void frame_pin(void *kpage);
 void frame_unpin(void *kpage);

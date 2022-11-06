@@ -35,6 +35,7 @@ bool
 page_set_on_swap(const void* upage, size_t swap_slot){
     struct page *p = page_get(upage);
     if (p == NULL){
+        PANIC("Tried to set non-existing page on Swap.");
         return false;
     }
     p->pstatus = ON_SWAP;
@@ -63,7 +64,6 @@ page_create_from_filesys (void *upage, bool writable, struct file* file, off_t f
     p->kpage = NULL;
     p->writable = writable;
     p->thread = t;
-    // TODO SWAP Info: which block? 
     p->file = file;
     p->file_offset = file_offset;
     p->file_bytes = read_bytes;
@@ -95,7 +95,6 @@ page_create_zeropage (void *upage){
     p->upage = upage;
     p->kpage = NULL;
     p->thread = t;
-    // TODO SWAP Info: which block? 
 
     /* hash_insert returns notNULL if elem is already present */
     if (hash_insert(t->page_table, &p->hash_elem) != NULL){
@@ -107,9 +106,34 @@ page_create_zeropage (void *upage){
     return true;
 }
 
+/* create page for frame that's already installed */
+bool
+page_create_with_frame(void *upage, void *kpage, bool writable){
+
+    struct thread *t = thread_current();
+    struct page *p;
+    p = (struct page*) malloc(sizeof(struct page));
+    p->pstatus = HAS_FRAME;
+    p->upage = upage;
+    p->kpage = kpage;
+    p->thread = t;
+    p->writable = writable;
+
+    /* hash_insert returns notNULL if elem is already present */
+    if (hash_insert(t->page_table, &p->hash_elem) != NULL){
+        free(p);
+        PANIC("Tried to insert a duplicate page table entry");
+        return false;
+    }
+
+    frame_unpin(kpage);
+    pagedir_set_dirty (p->thread->pagedir, kpage, false);
+
+    return true;
+}
+
 bool
 page_read_from_file(struct page *p, void *kpage){
-
     ASSERT(p->file_bytes + p->zero_bytes == PGSIZE);
     file_seek (p->file, p->file_offset);
     int bytes_read = file_read(p->file, kpage, p->file_bytes);
@@ -155,7 +179,7 @@ handle_page_fault (void* fault_addr){
         case FROM_FILE:
             /* Handle not being able to read from file*/
             if (!page_read_from_file(p, new_kpage)){
-                frame_free(new_kpage, true);
+                frame_free(new_kpage, true, true);
                 return false;
             }
             writable = p->writable;
@@ -165,7 +189,7 @@ handle_page_fault (void* fault_addr){
     }
 
     if(!page_install(p->upage, new_kpage, writable)){
-        frame_free(new_kpage, true);
+        frame_free(new_kpage, true, true);
         return false;
     }
     pagedir_set_dirty (p->thread->pagedir, new_kpage, false);
@@ -196,7 +220,7 @@ page_destroy_func(struct hash_elem *e, void *aux UNUSED){
   const struct page *p = hash_entry(e, struct page, hash_elem);
   if (p->kpage != NULL) {
     ASSERT (p->pstatus == HAS_FRAME);
-    frame_free(p->kpage, false);
+    frame_free(p->kpage, false, true);
   }
   else if(p->pstatus == ON_SWAP) {
     swap_free (p->swap_slot);

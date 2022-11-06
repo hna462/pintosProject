@@ -41,6 +41,8 @@ struct page* page_create_from_filesys (void *upage, bool writable, struct file* 
 
 struct page* page_create_zeropage (void *upage);
 
+bool page_create_with_frame(void *upage, void *kpage, bool writable);
+
 struct page* page_get (const void* vaddr);
 
 bool page_set_on_swap(const void* upage, size_t swap_slot);

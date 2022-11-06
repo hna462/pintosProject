@@ -44,93 +44,55 @@ page_set_on_swap(const void* upage, size_t swap_slot){
     return true;
 }
 
-struct page* 
-page_create_from_filesys (void *upage, bool writable, struct file* file, off_t file_offset,
-            uint32_t read_bytes, uint32_t zero_bytes){
-
-    ASSERT(upage == pg_round_down(upage));
-    //printf("DEBUG: page_create_from_filesys for vaddr: %p\n", vaddr);
-    struct thread *t = thread_current();
-    struct page *p;
-    p = (struct page*) malloc(sizeof(struct page));
-
-    /* allocation failed */
-    if (p == NULL){
-        return false;
-    }
-
-    p->pstatus = FROM_FILE;
-    p->upage = upage;
-    p->kpage = NULL;
-    p->writable = writable;
-    p->thread = t;
-    p->file = file;
-    p->file_offset = file_offset;
-    p->file_bytes = read_bytes;
-    p->zero_bytes = zero_bytes;
-
-    /* hash_insert returns notNULL if elem is already present */
-    if (hash_insert(t->page_table, &p->hash_elem) != NULL){
-        free(p);
-        PANIC("Tried to insert a duplicate page table entry");
-        return false;
-    }
-
-    return true;
-}
-
-struct page* 
-page_create_zeropage (void *upage){
-
-    struct thread *t = thread_current();
-    struct page *p;
-    p = (struct page*) malloc(sizeof(struct page));
-
-    /* allocation failed */
-    if (p == NULL){
-        return false;
-    }
-
-    p->pstatus = ZERO_PAGE;
-    p->upage = upage;
-    p->kpage = NULL;
-    p->thread = t;
-
-    /* hash_insert returns notNULL if elem is already present */
-    if (hash_insert(t->page_table, &p->hash_elem) != NULL){
-        free(p);
-        PANIC("Tried to insert a duplicate page table entry");
-        return false;
-    }
-
-    return true;
-}
-
-/* create page for frame that's already installed */
 bool
-page_create_with_frame(void *upage, void *kpage, bool writable){
+page_create (void *upage, enum pstatus starting_status, void *aux){
 
-    struct thread *t = thread_current();
-    struct page *p;
-    p = (struct page*) malloc(sizeof(struct page));
-    p->pstatus = HAS_FRAME;
-    p->upage = upage;
-    p->kpage = kpage;
-    p->thread = t;
-    p->writable = writable;
-
-    /* hash_insert returns notNULL if elem is already present */
-    if (hash_insert(t->page_table, &p->hash_elem) != NULL){
-        free(p);
-        PANIC("Tried to insert a duplicate page table entry");
-        return false;
+    struct page *new_page = (struct page*) malloc(sizeof(struct page));
+    if (new_page == NULL){
+        PANIC("Could not allocate new page in page_create");
     }
 
-    frame_unpin(kpage);
-    pagedir_set_dirty (p->thread->pagedir, kpage, false);
+    /* default field values */
+    new_page->upage = upage;
+    new_page->thread = thread_current();
+    new_page->kpage = NULL;
+    new_page->writable = true; /* All pages are writable by default */
+    new_page->file = NULL;
+    new_page->file_offset = NULL;
+    new_page->file_bytes = NULL;
+    new_page->zero_bytes = NULL;
+    new_page->swap_slot = NULL;
+    new_page->pstatus = starting_status;
+
+    struct page *aux_data = (struct page * ) aux;
+
+    switch(starting_status){
+        case FROM_FILE:
+            new_page->file = aux_data->file;
+            new_page->file_offset = aux_data->file_offset;
+            new_page->file_bytes = aux_data->file_bytes;
+            new_page->zero_bytes = aux_data->zero_bytes;
+            new_page->writable = aux_data->writable;
+        case ZERO_PAGE:
+            /* nothing to initialize */
+            break;
+        case HAS_FRAME:
+            new_page->kpage = aux_data->kpage;
+            frame_unpin(new_page->kpage);
+            break;
+        case ON_SWAP:
+            PANIC("Cannot directly create a new page table entry on swap");
+            break;
+    }
+
+    /* hash_insert returns notNULL if elem is already present */
+    if (hash_insert(thread_current()->page_table, &new_page->hash_elem) != NULL){
+        PANIC("Tried to insert a duplicate page table entry");
+    }
 
     return true;
 }
+
 
 bool
 page_read_from_file(struct page *p, void *kpage){
@@ -192,7 +154,7 @@ handle_page_fault (void* fault_addr){
         frame_free(new_kpage, true, true);
         return false;
     }
-    pagedir_set_dirty (p->thread->pagedir, new_kpage, false);
+    //pagedir_set_dirty (p->thread->pagedir, new_kpage, false);
     frame_unpin(new_kpage);
     p->kpage = new_kpage;
     p->pstatus = HAS_FRAME;

@@ -36,12 +36,7 @@ struct page
 
 bool handle_page_fault(void* fault_addr); /* called in exception.c*/
 
-struct page* page_create_from_filesys (void *upage, bool writable, struct file* file, off_t file_offset,
-                                       uint32_t read_bytes, uint32_t zero_bytes);
-
-struct page* page_create_zeropage (void *upage);
-
-bool page_create_with_frame(void *upage, void *kpage, bool writable);
+bool page_create (void *upage, enum pstatus starting_status, void *aux);
 
 struct page* page_get (const void* vaddr);
 

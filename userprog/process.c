@@ -528,7 +528,13 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
         // }
 
         /* Create a virtual page entry */
-        if (!page_create_from_filesys(upage, writable, file, ofs, page_read_bytes, page_zero_bytes)){
+        struct page aux;
+        aux.file = file;
+        aux.file_offset = ofs;
+        aux.file_bytes = page_read_bytes;
+        aux.zero_bytes = page_zero_bytes;
+        aux.writable = writable;
+        if (!page_create(upage, FROM_FILE, &aux)){
             return false;
         }
         /* Advance. */
@@ -646,9 +652,12 @@ install_page(void *upage, void *kpage, bool writable)
 {
     struct thread *t = thread_current();
 
+    struct page aux;
+    aux.kpage = kpage;
+
     /* Verify that there's not already a page at that virtual
      * address, then map our page there. */
     return pagedir_get_page(t->pagedir, upage) == NULL
            && pagedir_set_page(t->pagedir, upage, kpage, writable)
-           && page_create_with_frame(upage, kpage, writable);
+           && page_create(upage, HAS_FRAME, &aux);
 }

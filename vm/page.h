@@ -30,6 +30,7 @@ struct page
     uint32_t zero_bytes;         /* File zero bytes*/
 
     enum pstatus pstatus;
+    size_t swap_slot;           /* swap slot index in the swap_bitmap */
 };
 
 
@@ -41,6 +42,10 @@ struct page* page_create_from_filesys (void *upage, bool writable, struct file* 
 struct page* page_create_zeropage (void *upage);
 
 struct page* page_get (const void* vaddr);
+
+bool page_set_on_swap(const void* upage, size_t swap_slot);
+
+void clear_page_table();
 
 hash_hash_func page_hash_func;
 hash_less_func page_less_func;

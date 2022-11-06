@@ -151,11 +151,15 @@ page_fault(struct intr_frame *f)
     /* Did we load a page in this page_fault? */
     bool load_page_success = false;
 
-    bool valid_stack_addr =  ((PHYS_BASE - pg_round_down(fault_addr)) <= STACK_MAX_SIZE && (uint32_t*)fault_addr >= (f->esp - 32));
+    bool valid_stack_addr = ((PHYS_BASE - pg_round_down(fault_addr)) <= STACK_MAX_SIZE 
+                            && (uint32_t*)fault_addr >= (f->esp - 32));
+
     if (not_present && fault_addr > USER_VADDR_BOTTOM && is_user_vaddr(fault_addr)){
+
         if (page_get(pg_round_down(fault_addr)) == NULL && valid_stack_addr){
             page_create_zeropage (pg_round_down(fault_addr));
         }
+        
         load_page_success = handle_page_fault(fault_addr);
     }
 

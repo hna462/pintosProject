@@ -31,6 +31,18 @@ page_get (const void* vaddr){
     }
 }
 
+bool
+page_set_on_swap(const void* upage, size_t swap_slot){
+    struct page *p = page_get(upage);
+    if (p == NULL){
+        return false;
+    }
+    p->pstatus = ON_SWAP;
+    p->swap_slot = swap_slot;
+    p->kpage = NULL;
+    return true;
+}
+
 struct page* 
 page_create_from_filesys (void *upage, bool writable, struct file* file, off_t file_offset,
             uint32_t read_bytes, uint32_t zero_bytes){
@@ -138,12 +150,12 @@ handle_page_fault (void* fault_addr){
             memset(new_kpage, 0, PGSIZE);
             break;
         case ON_SWAP:
-            //TODO: Load from swap
+            swap_in(p->swap_slot, new_kpage);
             break;
         case FROM_FILE:
             /* Handle not being able to read from file*/
             if (!page_read_from_file(p, new_kpage)){
-                //TODO: free frame and page
+                frame_free(new_kpage, true);
                 return false;
             }
             writable = p->writable;
@@ -153,7 +165,7 @@ handle_page_fault (void* fault_addr){
     }
 
     if(!page_install(p->upage, new_kpage, writable)){
-        //TODO: free frame and page
+        frame_free(new_kpage, true);
         return false;
     }
     pagedir_set_dirty (p->thread->pagedir, new_kpage, false);
@@ -173,10 +185,32 @@ page_hash_func(const struct hash_elem *e, void *aux UNUSED){
 /* to compare two hash elements. Return true if page A precedes page B.*/
 bool
 page_less_func(const struct hash_elem *a_, const struct hash_elem *b_,
-           void *aux UNUSED){
-  const struct page *a = hash_entry (a_, struct page, hash_elem);
-  const struct page *b = hash_entry (b_, struct page, hash_elem);
-  return a->upage < b->upage;
+               void *aux UNUSED){
+    const struct page *a = hash_entry (a_, struct page, hash_elem);
+    const struct page *b = hash_entry (b_, struct page, hash_elem);
+    return a->upage < b->upage;
+}
+
+void
+page_destroy_func(struct hash_elem *e, void *aux UNUSED){
+  const struct page *p = hash_entry(e, struct page, hash_elem);
+  if (p->kpage != NULL) {
+    ASSERT (p->pstatus == HAS_FRAME);
+    frame_free(p->kpage, false);
+  }
+  else if(p->pstatus == ON_SWAP) {
+    swap_free (p->swap_slot);
+  }
+  free (p);
+}
+
+void
+clear_page_table(){
+    struct hash *h = thread_current()->page_table;
+    if (h != NULL){
+        hash_destroy (h, page_destroy_func);
+    }
+    h = NULL;
 }
 
 /* copy pasted install_page from process.c */

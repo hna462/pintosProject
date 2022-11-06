@@ -183,12 +183,8 @@ process_exit(void)
 		palloc_free_page(ch);
 	}
 
-    /* TODO */
     /* destroy thread's hash-table */
-    // struct hash *h = cur->page_table;
-    // if (h != NULL){
-    //     // hash_destroy (h, destroy_page_func);
-    // }
+    clear_page_table();
 
     /* Destroy the current process's page directory and switch back
      * to the kernel-only page directory. */
@@ -627,7 +623,7 @@ setup_stack(void **esp, char *fn_copy)
              palloc_free_page(tokens);
 
         } else {
-            frame_free(kpage);
+            frame_free(kpage, true);
         }
         //hex_dump( *(int*)esp, *esp, 128, true ); // NOTE: uncomment this to check arg passing
     }

@@ -155,13 +155,20 @@ page_fault(struct intr_frame *f)
                             && (uint32_t*)fault_addr >= (f->esp - 32));
 
     if (not_present && fault_addr > USER_VADDR_BOTTOM && is_user_vaddr(fault_addr)){
-
         if (page_get(pg_round_down(fault_addr)) == NULL && valid_stack_addr){
             page_create(pg_round_down(fault_addr), ZERO_PAGE, NULL);
         }
         
         load_page_success = handle_page_fault(fault_addr);
     }
+
+    /* kernel trying to write into page present in page table*/
+    if (!user && !not_present && write){
+        f->eip = (void *) f->eax;
+        f->eax = 0xffffffff;
+        release_filesys_lock();
+        return;
+    } 
 
     if (load_page_success == false){
         printf("Page fault at %p: %s error %s page in %s context.\n",

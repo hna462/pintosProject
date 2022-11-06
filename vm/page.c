@@ -192,6 +192,7 @@ page_destroy_func(struct hash_elem *e, void *aux UNUSED){
 
 void
 clear_page_table(){
+    //printf("DEBUG: clear_page_table for thread: %p\n", thread_current());
     struct hash *h = thread_current()->page_table;
     if (h != NULL){
         hash_destroy (h, page_destroy_func);

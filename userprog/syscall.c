@@ -13,6 +13,7 @@
 #include "filesys/off_t.h"
 #include "kernel/list.h"
 #include "devices/shutdown.h"
+#include "vm/page.h"
 
 static void syscall_handler (struct intr_frame *);
 int exec_process(char *file_name);
@@ -254,7 +255,9 @@ syscall_write(struct intr_frame *f)
 	int size = call_args[3];
 	void *buffer = call_args[2];
 	int fd = call_args[1];
+	
 	is_valid_addr(buffer);
+	is_valid_addr(buffer+size-1);
 
 	if (fd == 1){
 		putbuf(buffer, size);

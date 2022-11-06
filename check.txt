@@ -1,4 +1,3 @@
-pass tests/filesys/base/syn-write
 pass tests/userprog/args-none
 pass tests/userprog/args-single
 pass tests/userprog/args-multiple
@@ -70,11 +69,11 @@ FAIL tests/vm/pt-bad-read
 pass tests/vm/pt-write-code
 FAIL tests/vm/pt-write-code2
 pass tests/vm/pt-grow-stk-sc
-FAIL tests/vm/page-linear
+pass tests/vm/page-linear
 FAIL tests/vm/page-parallel
-FAIL tests/vm/page-merge-seq
-FAIL tests/vm/page-merge-par
-FAIL tests/vm/page-merge-stk
+pass tests/vm/page-merge-seq
+pass tests/vm/page-merge-par
+pass tests/vm/page-merge-stk
 pass tests/vm/page-shuffle
 pass tests/filesys/base/lg-create
 pass tests/filesys/base/lg-full
@@ -89,4 +88,4 @@ pass tests/filesys/base/sm-seq-random
 pass tests/filesys/base/syn-read
 pass tests/filesys/base/syn-remove
 pass tests/filesys/base/syn-write
-7 of 90 tests failed.
+3 of 90 tests failed.

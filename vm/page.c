@@ -1,5 +1,6 @@
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 #include <stdio.h>
 #include <string.h>
 #include "filesys/file.h"
@@ -39,6 +40,7 @@ page_set_on_swap(const void* upage, size_t swap_slot){
         return false;
     }
     p->pstatus = ON_SWAP;
+    p->has_frame = false;
     p->swap_slot = swap_slot;
     p->kpage = NULL;
     return true;
@@ -46,6 +48,8 @@ page_set_on_swap(const void* upage, size_t swap_slot){
 
 bool
 page_create (void *upage, enum pstatus starting_status, void *aux){
+
+    ASSERT(upage != NULL);
 
     struct page *new_page = (struct page*) malloc(sizeof(struct page));
     if (new_page == NULL){
@@ -63,6 +67,7 @@ page_create (void *upage, enum pstatus starting_status, void *aux){
     new_page->zero_bytes = NULL;
     new_page->swap_slot = NULL;
     new_page->pstatus = starting_status;
+    new_page->has_frame = false;
 
     struct page *aux_data = (struct page * ) aux;
 
@@ -76,8 +81,9 @@ page_create (void *upage, enum pstatus starting_status, void *aux){
         case ZERO_PAGE:
             /* nothing to initialize */
             break;
-        case HAS_FRAME:
+        case FROM_FRAME:
             new_page->kpage = aux_data->kpage;
+            new_page->has_frame = true;
             frame_unpin(new_page->kpage);
             break;
         case ON_SWAP:
@@ -115,7 +121,7 @@ handle_page_fault (void* fault_addr){
     if (p == NULL){
         return false;
     }
-    if (p->pstatus == HAS_FRAME){
+    if (p->has_frame){
         //printf("DEBUG: handle_page_fault HAS FRAME ALREADY");
         return true;
     }
@@ -129,7 +135,7 @@ handle_page_fault (void* fault_addr){
     bool writable = true;
 
     switch (p->pstatus){
-        case HAS_FRAME:
+        case FROM_FRAME:
             PANIC("A new frame was allocated for page that has frame already");
             break;
         case ZERO_PAGE:
@@ -154,10 +160,13 @@ handle_page_fault (void* fault_addr){
         frame_free(new_kpage, true, true);
         return false;
     }
-    //pagedir_set_dirty (p->thread->pagedir, new_kpage, false);
+    pagedir_set_dirty (p->thread->pagedir, new_kpage, false);
     frame_unpin(new_kpage);
+    p->has_frame = true;
     p->kpage = new_kpage;
-    p->pstatus = HAS_FRAME;
+    if(p->pstatus != FROM_FILE){
+        p->pstatus = FROM_FRAME;
+    }
 
     return true;
 }
@@ -181,7 +190,7 @@ void
 page_destroy_func(struct hash_elem *e, void *aux UNUSED){
   const struct page *p = hash_entry(e, struct page, hash_elem);
   if (p->kpage != NULL) {
-    ASSERT (p->pstatus == HAS_FRAME);
+    ASSERT (p->has_frame == true);
     frame_free(p->kpage, false, true);
   }
   else if(p->pstatus == ON_SWAP) {

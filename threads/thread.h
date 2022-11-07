@@ -113,7 +113,7 @@ struct thread {
     int fd_count; /* count of file descriptors */
 
     /* PROJECT3: VM */
-    struct hash *page_table /* page table*/
+    struct hash *page_table; /* page table*/
     
 };
 

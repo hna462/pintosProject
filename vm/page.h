@@ -11,7 +11,7 @@
 /* Current status of the page: */
 enum pstatus {
   ZERO_PAGE,        /* All zero page */
-  HAS_FRAME,         /* Is present in physical memory */
+  FROM_FRAME,         /* Is present in physical memory */
   ON_SWAP,          /* Is in swap memory */
   FROM_FILE,           /* Came from filesys */
 };
@@ -31,6 +31,8 @@ struct page
 
     enum pstatus pstatus;
     size_t swap_slot;           /* swap slot index in the swap_bitmap */
+
+    bool has_frame;
 };
 
 

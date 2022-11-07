@@ -51,12 +51,21 @@ void * frame_allocate (enum palloc_flags flags, void *upage){
         struct frame *evicted_frame = find_frame_to_evict(thread_current());
 
         /* was evicted frame dirty? TODO do something with this information */
-        // bool is_dirty = pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->upage) ||
-        //                 pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->kpage);
-       
+        bool is_dirty = pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->upage) ||
+                        pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->kpage);
+
         pagedir_clear_page(evicted_frame->thread->pagedir, evicted_frame->upage);
-        size_t swap_slot = swap_out(evicted_frame->kpage);
-        page_set_on_swap(evicted_frame->upage, swap_slot);
+        
+        struct page *p = page_get(evicted_frame->upage);
+        if (p->pstatus == FROM_FILE && !is_dirty){
+            p->has_frame = false;
+            p->kpage = NULL;
+        }
+        else{
+            size_t swap_slot = swap_out(evicted_frame->kpage);
+            page_set_on_swap(evicted_frame->upage, swap_slot);
+        }
+
 
         frame_free(evicted_frame->kpage, true, false);
         

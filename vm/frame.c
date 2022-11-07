@@ -34,7 +34,7 @@ frame_get (const void* kpage){
     temp_frame.kpage = kpage;
     struct hash_elem *h = hash_find (&frame_table, &(temp_frame.hash_elem));
     if (h == NULL) {
-        PANIC ("Tried getting frame that's not stored in the table");
+        return NULL;
     }
     else {
         return hash_entry(h, struct frame, hash_elem);
@@ -98,10 +98,9 @@ frame_free(void *kpage, bool free_kpage, bool with_lock){
 
     if (with_lock){
         lock_acquire(&frame_lock);
+        ASSERT (lock_held_by_current_thread(&frame_lock) == true);
     }
     
-
-    ASSERT (lock_held_by_current_thread(&frame_lock) == true);
     ASSERT (is_kernel_vaddr(kpage));
     ASSERT (pg_round_down (kpage) == kpage);
 
@@ -175,6 +174,15 @@ frame_pin(void *kpage){
 void
 frame_unpin(void *kpage){
     frame_set_pinned(kpage, false);
+}
+
+void
+frame_lock_acquire(){
+    lock_acquire(&frame_lock);
+}
+void
+frame_lock_release(){
+    lock_release(&frame_lock);
 }
 
 static unsigned frame_hash_func(const struct hash_elem *elem, void *aux UNUSED){

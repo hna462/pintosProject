@@ -23,4 +23,7 @@ void frame_free(void *kpage, bool free_kpage, bool with_lock);
 void frame_pin(void *kpage);
 void frame_unpin(void *kpage);
 
+void frame_lock_acquire();
+void frame_lock_release();
+
 #endif /* vm/frame.h */

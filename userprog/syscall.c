@@ -63,6 +63,8 @@ syscall_handler (struct intr_frame *f UNUSED)
 	int *p = f->esp;
 	is_valid_addr(p);
 
+	thread_current()->latest_esp = f->esp;
+
 	uint32_t* args = ((uint32_t*) f->esp);
 	int system_call = *p;
 	switch (system_call)
@@ -240,7 +242,12 @@ syscall_read(struct intr_frame *f)
 			else
 			{
 				acquire_filesys_lock();
+				// if (!preload_multiple_pages_and_pin(buffer, size)){
+				// 	release_filesys_lock();
+				// 	exit_process(-1);
+				// }
 				ret = file_read (fptr->ptr, buffer, size);
+				// unpin_multiple_pages(buffer, size);
 				release_filesys_lock();
 			}
 	}
@@ -269,7 +276,12 @@ syscall_write(struct intr_frame *f)
 				ret = -1;
 			else{
 				acquire_filesys_lock();
+				// if (!preload_multiple_pages_and_pin(buffer, size)){
+				// 	release_filesys_lock();
+				// 	exit_process(-1);
+				// }
 				ret = file_write (fptr->ptr, buffer, size);
+				// unpin_multiple_pages(buffer, size);
 				release_filesys_lock();
 			}
 	}

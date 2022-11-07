@@ -44,6 +44,9 @@ struct page* page_get (const void* vaddr);
 
 bool page_set_on_swap(const void* upage, size_t swap_slot);
 
+bool preload_multiple_pages_and_pin (const void *start_addr, size_t size);
+void unpin_multiple_pages(const void *start_addr, size_t size);
+
 void clear_page_table();
 
 hash_hash_func page_hash_func;

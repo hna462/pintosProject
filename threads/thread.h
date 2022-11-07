@@ -114,7 +114,7 @@ struct thread {
 
     /* PROJECT3: VM */
     struct hash *page_table; /* page table*/
-    
+    uint8_t *latest_esp;
 };
 
 /* child thread see process.c:process_execute */

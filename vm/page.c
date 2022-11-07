@@ -1,6 +1,7 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "vm/swap.h"
+#include "vm/swap.h"
 #include <stdio.h>
 #include <string.h>
 #include "filesys/file.h"
@@ -9,6 +10,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
+
 
 
 static bool page_install(void *upage, void *kpage, bool writable);
@@ -51,6 +53,7 @@ page_create (void *upage, enum pstatus starting_status, void *aux){
 
     ASSERT(upage != NULL);
 
+
     struct page *new_page = (struct page*) malloc(sizeof(struct page));
     if (new_page == NULL){
         PANIC("Could not allocate new page in page_create");
@@ -73,18 +76,23 @@ page_create (void *upage, enum pstatus starting_status, void *aux){
 
     switch(starting_status){
         case FROM_FILE:
-            new_page->file = aux_data->file;
-            new_page->file_offset = aux_data->file_offset;
-            new_page->file_bytes = aux_data->file_bytes;
-            new_page->zero_bytes = aux_data->zero_bytes;
-            new_page->writable = aux_data->writable;
+            // if(aux_data->file_bytes == 0){
+            //     new_page->pstatus = ZERO_PAGE;
+            // }
+            // else {
+                new_page->file = aux_data->file;
+                new_page->file_offset = aux_data->file_offset;
+                new_page->file_bytes = aux_data->file_bytes;
+                new_page->zero_bytes = aux_data->zero_bytes;
+                new_page->writable = aux_data->writable;
+            // }
+            
         case ZERO_PAGE:
             /* nothing to initialize */
             break;
         case FROM_FRAME:
             new_page->kpage = aux_data->kpage;
             new_page->has_frame = true;
-            frame_unpin(new_page->kpage);
             break;
         case ON_SWAP:
             PANIC("Cannot directly create a new page table entry on swap");
@@ -94,6 +102,10 @@ page_create (void *upage, enum pstatus starting_status, void *aux){
     /* hash_insert returns notNULL if elem is already present */
     if (hash_insert(thread_current()->page_table, &new_page->hash_elem) != NULL){
         PANIC("Tried to insert a duplicate page table entry");
+    }
+
+    if(starting_status == FROM_FRAME){
+        frame_unpin(new_page->kpage);
     }
 
     return true;
@@ -142,7 +154,10 @@ handle_page_fault (void* fault_addr){
             memset(new_kpage, 0, PGSIZE);
             break;
         case ON_SWAP:
+            //printf("DEBUG: got page from swap_in! \n");
+            frame_lock_acquire();
             swap_in(p->swap_slot, new_kpage);
+            frame_lock_release();
             break;
         case FROM_FILE:
             /* Handle not being able to read from file*/
@@ -155,7 +170,7 @@ handle_page_fault (void* fault_addr){
         default:
             PANIC("Page with undefined status.");
     }
-
+    
     if(!page_install(p->upage, new_kpage, writable)){
         frame_free(new_kpage, true, true);
         return false;
@@ -169,6 +184,67 @@ handle_page_fault (void* fault_addr){
     }
 
     return true;
+}
+
+bool
+preload_multiple_pages_and_pin(const void *start_addr, size_t size){
+    /* iterate through all pages */
+    void *cur_page;
+    for(cur_page = pg_round_down(start_addr); cur_page < start_addr + size; cur_page += PGSIZE){
+        /* code is similar to the handle_page_fault but we are pinning each frame*/
+        printf("DEBUG: Preloading some page...\n");
+        struct page *p = page_get(cur_page);
+        ASSERT(p != NULL);
+        if (p->has_frame == true){
+            frame_pin(p->kpage);
+            continue;
+        }
+        void* new_kpage = frame_allocate(PAL_USER, p->upage);
+        ASSERT(new_kpage != NULL);
+        switch(p->pstatus){
+            case ZERO_PAGE:
+                memset(new_kpage, 0, PGSIZE);
+                break;
+            case ON_SWAP:
+                frame_lock_acquire();
+                swap_in(p->swap_slot, new_kpage);
+                frame_lock_release();
+                break;
+            case FROM_FILE:
+                /* Handle not being able to read from file*/
+                if (!page_read_from_file(p, new_kpage)){
+                    frame_free(new_kpage, true, true);
+                    return false;
+                }
+                break;
+            default:
+            PANIC("Page with undefined status.");
+        }
+        if(!page_install(p->upage, new_kpage, p->writable)){
+            frame_free(new_kpage, true, true);
+            return false;
+        }
+        frame_pin(new_kpage);
+        p->has_frame = true;
+        p->kpage = new_kpage;
+        if(p->pstatus != FROM_FILE){
+            p->pstatus = FROM_FRAME;
+        }
+
+        return true;
+    }
+    printf("DEBUG: Finished preloading!\n");
+}
+
+void
+unpin_multiple_pages(const void *start_addr, size_t size){
+    /* iterate through all pages */
+    void *cur_page;
+    for(cur_page = pg_round_down(start_addr); cur_page < start_addr + size; cur_page += PGSIZE){
+        struct page *p = page_get(cur_page);
+        ASSERT(p != NULL);
+        frame_unpin(p->kpage);
+    }
 }
 
 unsigned

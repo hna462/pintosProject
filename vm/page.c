@@ -192,7 +192,6 @@ preload_multiple_pages_and_pin(const void *start_addr, size_t size){
     void *cur_page;
     for(cur_page = pg_round_down(start_addr); cur_page < start_addr + size; cur_page += PGSIZE){
         /* code is similar to the handle_page_fault but we are pinning each frame*/
-        printf("DEBUG: Preloading some page...\n");
         struct page *p = page_get(cur_page);
         ASSERT(p != NULL);
         if (p->has_frame == true){
@@ -231,9 +230,9 @@ preload_multiple_pages_and_pin(const void *start_addr, size_t size){
             p->pstatus = FROM_FRAME;
         }
 
-        return true;
+        continue;
     }
-    printf("DEBUG: Finished preloading!\n");
+    return true;
 }
 
 void

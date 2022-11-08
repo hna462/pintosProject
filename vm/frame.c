@@ -50,13 +50,14 @@ void * frame_allocate (enum palloc_flags flags, void *upage){
         /* Could not allocate frame - find frame to evict */
         struct frame *evicted_frame = find_frame_to_evict(thread_current());
 
-        /* was evicted frame dirty? TODO do something with this information */
+        /* was evicted frame dirty? */
         bool is_dirty = pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->upage) ||
                         pagedir_is_dirty(evicted_frame->thread->pagedir, evicted_frame->kpage);
 
         pagedir_clear_page(evicted_frame->thread->pagedir, evicted_frame->upage);
         
         struct page *p = page_get(evicted_frame->upage);
+        /* if we had a non-dirty frame from filesys, we can just delete it - it'll be read in again when needed*/
         if (p->pstatus == FROM_FILE && !is_dirty){
             p->has_frame = false;
             p->kpage = NULL;

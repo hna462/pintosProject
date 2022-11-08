@@ -152,9 +152,11 @@ page_fault(struct intr_frame *f)
     bool load_page_success = false;
 
     void* esp = user ? f->esp : thread_current()->latest_esp;    
-    bool valid_stack_addr = ((PHYS_BASE - pg_round_down(fault_addr)) <= STACK_MAX_SIZE 
-                            && (uint32_t*)fault_addr+32 >= f->esp )
-                            &&  (esp <= fault_addr || fault_addr+4 == f->esp || fault_addr+32 == f->esp);
+    bool valid_stack_addr = (fault_addr != NULL && fault_addr < PHYS_BASE /* is in user space */
+                            && PHYS_BASE - STACK_MAX_SIZE <= fault_addr /* is in limits of stack size*/
+                            && fault_addr >= USER_VADDR_BOTTOM /* above the user stack */
+                            /* within 32 bytes of the current user stack */
+                            && (fault_addr >= esp || fault_addr+4 == f->esp || fault_addr+32 == f->esp)); 
 
     if (not_present){
         if (page_get(pg_round_down(fault_addr)) == NULL && valid_stack_addr){

@@ -10,7 +10,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/palloc.h"
-
+#include "userprog/exception.h"
 
 
 static bool page_install(void *upage, void *kpage, bool writable);
@@ -76,16 +76,16 @@ page_create (void *upage, enum pstatus starting_status, void *aux){
 
     switch(starting_status){
         case FROM_FILE:
-            // if(aux_data->file_bytes == 0){
-            //     new_page->pstatus = ZERO_PAGE;
-            // }
-            // else {
+            if(aux_data->file_bytes == 0){
+                new_page->pstatus = ZERO_PAGE;
+            }
+            else {
                 new_page->file = aux_data->file;
                 new_page->file_offset = aux_data->file_offset;
                 new_page->file_bytes = aux_data->file_bytes;
                 new_page->zero_bytes = aux_data->zero_bytes;
                 new_page->writable = aux_data->writable;
-            // }
+            }
             
         case ZERO_PAGE:
             /* nothing to initialize */
@@ -176,12 +176,14 @@ handle_page_fault (void* fault_addr){
         return false;
     }
     pagedir_set_dirty (p->thread->pagedir, new_kpage, false);
-    frame_unpin(new_kpage);
+
     p->has_frame = true;
     p->kpage = new_kpage;
     if(p->pstatus != FROM_FILE){
         p->pstatus = FROM_FRAME;
+        
     }
+    frame_unpin(new_kpage);
 
     return true;
 }
@@ -197,10 +199,14 @@ preload_multiple_pages_and_pin(const void *start_addr, size_t size){
         if (p == NULL){
             /* First check if the address is valid*/
             void* esp = thread_current()->latest_esp; 
-            bool valid_stack_addr = ((PHYS_BASE - pg_round_down(cur_page)) <= STACK_MAX_SIZE 
-                            && (uint32_t*)cur_page+32 >= esp)
-                            &&  (esp <= cur_page );
-            if (!(is_user_vaddr && valid_stack_addr)){
+            /* see also exception.c */
+            bool valid_stack_addr = (cur_page != NULL && cur_page < PHYS_BASE /* is in user space */
+                            && PHYS_BASE - STACK_MAX_SIZE <= cur_page /* is in limits of stack size*/
+                            && cur_page >= USER_VADDR_BOTTOM /* above the user stack */
+                            /* within 32 bytes of the current user stack */
+                            && (cur_page >= esp || cur_page+4 == esp || cur_page+32 == esp)); 
+
+            if (!(is_user_vaddr(cur_page) && valid_stack_addr)){
                 /* preloading failed due to bad buffer address */
                 return false;
             }
@@ -256,8 +262,7 @@ unpin_multiple_pages(const void *start_addr, size_t size){
     void *cur_page;
     for(cur_page = pg_round_down(start_addr); cur_page < start_addr + size; cur_page += PGSIZE){
         struct page *p = page_get(cur_page);
-        ASSERT(p != NULL);
-        frame_unpin(p->kpage);
+        if (p != NULL) frame_unpin(p->kpage);
     }
 }
 

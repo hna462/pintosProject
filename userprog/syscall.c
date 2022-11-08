@@ -243,8 +243,10 @@ syscall_read(struct intr_frame *f)
 			{
 				acquire_filesys_lock();
 				if (!preload_multiple_pages_and_pin(buffer, size)){
+					unpin_multiple_pages(buffer, size);
 					release_filesys_lock();
 					exit_process(-1);
+					return 0;
 				}
 				ret = file_read (fptr->ptr, buffer, size);
 				unpin_multiple_pages(buffer, size);
@@ -277,8 +279,10 @@ syscall_write(struct intr_frame *f)
 			else{
 				acquire_filesys_lock();
 				if (!preload_multiple_pages_and_pin(buffer, size)){
+					unpin_multiple_pages(buffer, size);
 					release_filesys_lock();
 					exit_process(-1);
+					return 0;
 				}
 				ret = file_write (fptr->ptr, buffer, size);
 				unpin_multiple_pages(buffer, size);

@@ -193,7 +193,22 @@ preload_multiple_pages_and_pin(const void *start_addr, size_t size){
     for(cur_page = pg_round_down(start_addr); cur_page < start_addr + size; cur_page += PGSIZE){
         /* code is similar to the handle_page_fault but we are pinning each frame*/
         struct page *p = page_get(cur_page);
-        ASSERT(p != NULL);
+        /* if page doesn't exist yet, create a blank page*/
+        if (p == NULL){
+            /* First check if the address is valid*/
+            void* esp = thread_current()->latest_esp; 
+            bool valid_stack_addr = ((PHYS_BASE - pg_round_down(cur_page)) <= STACK_MAX_SIZE 
+                            && (uint32_t*)cur_page+32 >= esp)
+                            &&  (esp <= cur_page );
+            if (!(is_user_vaddr && valid_stack_addr)){
+                /* preloading failed due to bad buffer address */
+                return false;
+            }
+            page_create(pg_round_down(cur_page), ZERO_PAGE, NULL);
+        }
+        p = page_get(cur_page);
+        /* now page MUST exist */
+        ASSERT( p != NULL);
         if (p->has_frame == true){
             frame_pin(p->kpage);
             continue;

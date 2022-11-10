@@ -8,13 +8,15 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@utexas.edu>
-FirstName LastName <email@utexas.edu>
+Iurii Rykhlo  <iurii.rykhlo@utexas.edu>
+Hemanth Anantha hna462@utexas.edu
 
 ---- PRELIMINARIES ----
 
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
+
+Can you please run the grader without the -j flag.
 
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
@@ -29,20 +31,83 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/* Current status of the page: */
+enum pstatus {
+  ZERO_PAGE,        /* All zero page */
+  FROM_FRAME,         /* Is present in physical memory */
+  ON_SWAP,          /* Is in swap memory */
+  FROM_FILE,           /* Came from filesys */
+};
+
+/* SPT entry */
+struct page
+{
+    void *upage;            /* user virtual address */
+    void *kpage;            /* physical frame address. NULL if not HAS_FRAME */
+    bool writable;          /* writable or read-only */
+    struct thread *thread;  /* thread that owns the page */
+    struct hash_elem hash_elem; /* thread's `hash_table' hash element. */
+
+    struct file *file;          /* File */
+    off_t file_offset;          /* File Offset */
+    uint32_t file_bytes;         /* Bytes to read/write */
+    uint32_t zero_bytes;         /* File zero bytes*/
+
+    enum pstatus pstatus;
+    size_t swap_slot;           /* swap slot index in the swap_bitmap */
+
+    bool has_frame;         /* does page currently have associated frame */
+};
+
+in thread.h struct thread,
+struct hash *page_table; /* page table*/
+
 ---- ALGORITHMS ----
 
 >> A2: In a few paragraphs, describe your code for accessing the data
 >> stored in the SPT about a given page.
+
+The data stored in the SPT can be accessed during a page fault. If a page fault 
+does not have rights violation, handle_page_fault() will get called on the fault
+address. In this function, current thread's SPT will be checked for an existence 
+of a page corresponding to the faulting address. If such page exists in SPT and 
+it has associated frame already, the page fault will be resolved right away. If
+a page does not have frame, a frame will get allocated and data will be loaded in 
+that frame depending on the page status (either swap, filesys or zeropage). If this 
+is successfull, the page fault will get resolved. 
 
 ---- SYNCHRONIZATION ----
 
 >> A3: When two user processes both need a new frame at the same time,
 >> how are races avoided?
 
+As described above, when a process page faults on a page that doesn't have 
+associated frame, a new frame will get allocated. This allocation is done
+using frame_allocate() in frame.c. In, frame.c, we have global frame lock
+static struct lock frame_lock which will get acquired during frame allocation
+and released when it is finished. Moreover, the allocation is done using
+palloc_get_page(). palloc_get_page() calls palloc_get_multiple() which uses
+an exclusive lock for the memory pool to ensure that only one process
+at a time can do bitmap_scan_and_flip() on the memory pool. 
+
 ---- RATIONALE ----
 
 >> A4: Why did you choose the data structure(s) that you did for
 >> representing virtual-to-physical mappings?
+
+The design choices that we made are based on the requirement 
+for lazy loading and the need for eviction/swapping of pages.
+The supplemental page table is needed to achieve these requirements.
+We use hashmap to represent SPT to achieve O(1) SPT entry lookup for robustness.
+SPT entries use upage(virtual page address) as a key to easily make mappings from
+SPT to pagedir. SPT entries also store kpage(kernel frame address) to have a mapping to the page's
+frame if such exist.We track the status of a page with pstatus which tells whether the
+current page is coming from swap, filesys, is zeropage or has a frame. Which 
+is needed to appropriately handle page faults. Additionaly, we have a bool has_frame to check 
+whether a page currently has allocated frame. For pages that come 
+from filesys, we store file information (file, file_offset, file_bytes, zero_bytes) so that 
+we can read data in from the file in filesys. swap_slot is stored to index page's position
+in swap space whenever the page needs to be read in from the swap. 
 
                         PAGING TO AND FROM DISK
                         =======================
@@ -53,18 +118,60 @@ FirstName LastName <email@utexas.edu>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+/* frame table entry */
+struct frame 
+{
+    struct thread* thread;      /* Owner */
+    void *kpage;                /* Kernel physical address */
+    void *upage;                /* User Virtual Memory Address */
+    bool pinned;            /* Pinned frame cannot be evicted */
+    struct list_elem list_elem;    /* Linked List elem */
+    struct hash_elem hash_elem;     /* Hash Table elem  */
+};
+static struct lock frame_lock; /* global frame lock */
+static struct list frame_clock_list; /* list for clock eviction algorithm implementation */
+static struct hash frame_table;    /* hash table for storing frame entries */
+static struct list_elem *clock_ptr; /* clock algorithm pointer */
+
+swap.c:                             /* 4096 bytes / 512 bytes == 8 */
+static const size_t SECTORS_PER_PAGE = PGSIZE / BLOCK_SECTOR_SIZE;
+static struct block *swap_block; /* swap block device */
+static struct bitmap *swap_bitmap; /* swap bitmap */
+static size_t swap_size; /* size of swap_bitmap */
+
+
 ---- ALGORITHMS ----
 
 >> B2: When a frame is required but none is free, some frame must be
 >> evicted.  Describe your code for choosing a frame to evict.
 
+In frame_allocate() we call palloc_get_page() to allocate a new frame. However, if 
+allocation fails, we will run the eviction algorithm to find a frame to evict by calling
+find_frame_to_evict(). We use simple clock eviction algorithm to find a frame to evict.
+We have a clock_ptr which points to an entry in the frame_clock_list. Initially it would point to
+the first element of the list, and we would iterate through the list until we find a frame that is not pinned 
+and has accessed bit set to 0. When we encounter a frame with accessed bit set to 1, we will set the accessed bit to 0
+and skip to the next element in frame_clock_list. We iterate through the frame_clock_list at most (2 * frame table size) times. 
+More iterations would be redundant since we are flipping the accessed bits. 
+
 >> B3: When a process P obtains a frame that was previously used by a
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
 
+After finding frame to evict, we are clearing page in a processes page directory 
+using pagedir_clear_page(), and changing the status of that page in the SPT. We 
+are also setting page's has_frame flag to false and clearing kpage pointer to indicate that frame is no longer present.
+If that page was put on swap memory, we will change the page status to ON_SWAP. If it's from filesys and non dirty, we will
+just clear the frame since it can be read from filesys again when needed. 
+
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+
+When a page fault occurs such that it is not a rights violation and fault_addr is valid stack address,
+we will create a new SPT entry using page_create with ZERO_PAGE status if a SPT does not yet exist for that page already.
+We check if the address is valid by making sure that it is in user space, is in limits of STACK_MAX_SIZE(set to 8 mb), 
+is above the user stack, and is within 32 bytes of the current user stack.
 
 ---- SYNCHRONIZATION ----
 

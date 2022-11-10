@@ -18,6 +18,8 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 #include "userprog/tss.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 
 #define LOGGING_LEVEL 6
 
@@ -160,7 +162,7 @@ process_exit(void)
     uint32_t *pd;
     int exit_code = cur->exit_code;
 
-    /* default exit_code handling */ 
+    /* defaut exit_code handling */ 
     if (exit_code == -999){
         exit_process(-1);
     }
@@ -180,6 +182,9 @@ process_exit(void)
 		list_remove(&ch->elem);
 		palloc_free_page(ch);
 	}
+
+    /* destroy thread's hash-table */
+    clear_page_table();
 
     /* Destroy the current process's page directory and switch back
      * to the kernel-only page directory. */
@@ -304,6 +309,12 @@ load(void(**eip) (void), void **esp, const char* fn_copy)
         goto done;
     }
     process_activate();
+
+    /* Create page hash-table. */
+    t->page_table = malloc (sizeof *t->page_table);
+    if (t->page_table == NULL)
+        goto done;
+    hash_init (t->page_table, page_hash_func, page_less_func, NULL);
 
     /* create temp program name copy for loading new process */
     char* program_name = palloc_get_page(0);
@@ -497,26 +508,37 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
         size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-        /* Get a page of memory. */
-        uint8_t *kpage = palloc_get_page(PAL_USER);
-        if (kpage == NULL) {
+        // /* Get a page of memory. */
+        // uint8_t *kpage = palloc_get_page(PAL_USER);
+        // if (kpage == NULL) {
+        //     return false;
+        // }
+
+        // /* Load this page. */
+        // if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes) {
+        //     palloc_free_page(kpage);
+        //     return false;
+        // }
+        // memset(kpage + page_read_bytes, 0, page_zero_bytes);
+
+        // /* Add the page to the process's address space. */
+        // if (!install_page(upage, kpage, writable)) {
+        //     palloc_free_page(kpage);
+        //     return false;
+        // }
+
+        /* Create a virtual page entry */
+        struct page aux;
+        aux.file = file;
+        aux.file_offset = ofs;
+        aux.file_bytes = page_read_bytes;
+        aux.zero_bytes = page_zero_bytes;
+        aux.writable = writable;
+        if (!page_create(upage, FROM_FILE, &aux)){
             return false;
         }
-
-        /* Load this page. */
-        if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes) {
-            palloc_free_page(kpage);
-            return false;
-        }
-        memset(kpage + page_read_bytes, 0, page_zero_bytes);
-
-        /* Add the page to the process's address space. */
-        if (!install_page(upage, kpage, writable)) {
-            palloc_free_page(kpage);
-            return false;
-        }
-
         /* Advance. */
+        ofs += page_read_bytes;
         read_bytes -= page_read_bytes;
         zero_bytes -= page_zero_bytes;
         upage += PGSIZE;
@@ -552,7 +574,7 @@ setup_stack(void **esp, char *fn_copy)
 
     log(L_TRACE, "setup_stack()");
 
-    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    kpage = frame_allocate(PAL_USER | PAL_ZERO, PHYS_BASE - PGSIZE);
     if (kpage != NULL) {
         success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
         if (success) {
@@ -607,7 +629,7 @@ setup_stack(void **esp, char *fn_copy)
              palloc_free_page(tokens);
 
         } else {
-            palloc_free_page(kpage);
+            frame_free(kpage, true, true);
         }
         //hex_dump( *(int*)esp, *esp, 128, true ); // NOTE: uncomment this to check arg passing
     }
@@ -630,8 +652,12 @@ install_page(void *upage, void *kpage, bool writable)
 {
     struct thread *t = thread_current();
 
+    struct page aux;
+    aux.kpage = kpage;
+
     /* Verify that there's not already a page at that virtual
      * address, then map our page there. */
     return pagedir_get_page(t->pagedir, upage) == NULL
-           && pagedir_set_page(t->pagedir, upage, kpage, writable);
+           && pagedir_set_page(t->pagedir, upage, kpage, writable)
+           && page_create(upage, FROM_FRAME, &aux);
 }

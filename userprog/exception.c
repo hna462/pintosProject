@@ -5,6 +5,8 @@
 #include "threads/thread.h"
 #include "userprog/exception.h"
 #include "userprog/gdt.h"
+#include "vm/page.h"
+#include "threads/vaddr.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -146,13 +148,43 @@ page_fault(struct intr_frame *f)
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
 
-    /* To implement virtual memory, delete the rest of the function
-     * body, and replace it with code that brings in the page to
-     * which fault_addr refers. */
-    printf("Page fault at %p: %s error %s page in %s context.\n",
+    /* Did we load a page in this page_fault? */
+    bool load_page_success = false;
+
+    void* esp = user ? f->esp : thread_current()->latest_esp;    
+    bool valid_stack_addr = (fault_addr != NULL && fault_addr < PHYS_BASE /* is in user space */
+                            && PHYS_BASE - STACK_MAX_SIZE <= fault_addr /* is in limits of stack size*/
+                            && fault_addr >= USER_VADDR_BOTTOM /* above the user stack */
+                            /* within 32 bytes of the current user stack */
+                            && (fault_addr >= esp || fault_addr+4 == f->esp || fault_addr+32 == f->esp)); 
+
+    if (not_present){
+        if (page_get(pg_round_down(fault_addr)) == NULL && valid_stack_addr){
+            page_create(pg_round_down(fault_addr), ZERO_PAGE, NULL);
+        }
+        load_page_success = handle_page_fault(fault_addr);
+    }
+
+    /* kernel trying to write into page present in page table*/
+    if (!user && !not_present && write){
+        f->eip = (void *) f->eax;
+        f->eax = 0xffffffff;
+        release_filesys_lock_if_held();
+        return;
+    }
+
+    if (load_page_success == false){
+        if (!user && write){
+            release_filesys_lock_if_held();
+            exit_process(-1);
+            return;
+        }
+        printf("Page fault at %p: %s error %s page in %s context.\n",
            fault_addr,
            not_present ? "not present" : "rights violation",
            write ? "writing" : "reading",
            user ? "user" : "kernel");
-    kill(f);
+        kill(f);
+    }
+    
 }

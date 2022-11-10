@@ -13,6 +13,7 @@
 #include "filesys/off_t.h"
 #include "kernel/list.h"
 #include "devices/shutdown.h"
+#include "vm/page.h"
 
 static void syscall_handler (struct intr_frame *);
 int exec_process(char *file_name);
@@ -61,6 +62,8 @@ syscall_handler (struct intr_frame *f UNUSED)
 {
 	int *p = f->esp;
 	is_valid_addr(p);
+
+	thread_current()->latest_esp = f->esp;
 
 	uint32_t* args = ((uint32_t*) f->esp);
 	int system_call = *p;
@@ -239,7 +242,14 @@ syscall_read(struct intr_frame *f)
 			else
 			{
 				acquire_filesys_lock();
+				if (!preload_multiple_pages_and_pin(buffer, size)){
+					unpin_multiple_pages(buffer, size);
+					release_filesys_lock();
+					exit_process(-1);
+					return 0;
+				}
 				ret = file_read (fptr->ptr, buffer, size);
+				unpin_multiple_pages(buffer, size);
 				release_filesys_lock();
 			}
 	}
@@ -254,7 +264,9 @@ syscall_write(struct intr_frame *f)
 	int size = call_args[3];
 	void *buffer = call_args[2];
 	int fd = call_args[1];
+	
 	is_valid_addr(buffer);
+	is_valid_addr(buffer+size-1);
 
 	if (fd == 1){
 		putbuf(buffer, size);
@@ -266,7 +278,14 @@ syscall_write(struct intr_frame *f)
 				ret = -1;
 			else{
 				acquire_filesys_lock();
+				if (!preload_multiple_pages_and_pin(buffer, size)){
+					unpin_multiple_pages(buffer, size);
+					release_filesys_lock();
+					exit_process(-1);
+					return 0;
+				}
 				ret = file_write (fptr->ptr, buffer, size);
+				unpin_multiple_pages(buffer, size);
 				release_filesys_lock();
 			}
 	}

@@ -6,6 +6,9 @@
 #define PF_W 0x2    /* 0: read, 1: write. */
 #define PF_U 0x4    /* 0: kernel, 1: user process. */
 
+
+#define USER_VADDR_BOTTOM ((void *) 0x08048000)
+
 void exception_init (void);
 void exception_print_stats (void);
 

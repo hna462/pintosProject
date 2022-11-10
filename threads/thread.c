@@ -503,6 +503,7 @@ init_thread(struct thread *t, const char *name, int priority)
     list_init (&t->files);
     t->self_file = NULL;
     t->fd_count = 2;
+    t->page_table = NULL;
 
 
     old_level = intr_disable();
@@ -629,6 +630,12 @@ void acquire_filesys_lock()
 void release_filesys_lock()
 {
   lock_release(&filesys_lock);
+}
+
+void release_filesys_lock_if_held(){
+    if (lock_held_by_current_thread(&filesys_lock)){
+        release_filesys_lock();
+    }
 }
 
 /* Offset of `stack' member within `struct thread'.

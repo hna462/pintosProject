@@ -103,6 +103,11 @@ main(void)
     malloc_init();
     paging_init();
 
+#ifdef VM
+    /* Initialize Frame Table */
+    frame_table_init();
+#endif
+
     /* Segmentation. */
 #ifdef USERPROG
     tss_init();
@@ -131,6 +136,9 @@ main(void)
     filesys_init(format_filesys);
 #endif
 
+#ifdef VM
+    swap_init ();
+#endif
     printf("Boot complete.\n");
 
     /* Run actions specified on kernel command line. */

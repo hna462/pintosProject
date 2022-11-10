@@ -111,7 +111,10 @@ struct thread {
     struct file *self_file;  /* file that the thread executes */  
     struct list files; /* list of files */
     int fd_count; /* count of file descriptors */
-    
+
+    /* PROJECT3: VM */
+    struct hash *page_table; /* page table*/
+    uint8_t *latest_esp;
 };
 
 /* child thread see process.c:process_execute */
@@ -156,5 +159,6 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 void acquire_filesys_lock();
 void release_filesys_lock();
+void release_filesys_lock_if_held();
 
 #endif /* threads/thread.h */

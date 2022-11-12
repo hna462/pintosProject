@@ -101,7 +101,7 @@ The supplemental page table is needed to achieve these requirements.
 We use hashmap to represent SPT to achieve O(1) SPT entry lookup for robustness.
 SPT entries use upage(virtual page address) as a key to easily make mappings from
 SPT to pagedir. SPT entries also store kpage(kernel frame address) to have a mapping to the page's
-frame if such exist.We track the status of a page with pstatus which tells whether the
+frame if such exist. We track the status of a page with pstatus which tells whether the
 current page is coming from swap, filesys, is zeropage or has a frame. Which 
 is needed to appropriately handle page faults. Additionaly, we have a bool has_frame to check 
 whether a page currently has allocated frame. For pages that come 
@@ -180,21 +180,42 @@ is above the user stack, and is within 32 bytes of the current user stack.
 >> textbook for an explanation of the necessary conditions for
 >> deadlock.)
 
+The frame table has a single lock to protect its access, while the swap table is managed with a bitmap to track free and used bits. 
+For the frame table, we are able to avoid deadlock by making sure each process has a lock protecting its SPT entries, and ensuring the 
+lock only when held allows for no circular dependiecies. On the other hand, swap table doesn't use any locks, so deadlock isnt a concern. 
+
 >> B6: A page fault in process P can cause another process Q's frame
 >> to be evicted.  How do you ensure that Q cannot access or modify
 >> the page during the eviction process?  How do you avoid a race
 >> between P evicting Q's frame and Q faulting the page back in?
+
+There is a lock on the frame table entry, which must be aquired before a new frame is allocated/evicted 
+if needed. In that case, if Q faults, it will block until P finishes
+evicting its frame. Q has no write-access to the page and will not be able to 
+fault immediatley as we remove the mapping from Q's page table before starting 
+the eviction process. 
 
 >> B7: Suppose a page fault in process P causes a page to be read from
 >> the file system or swap.  How do you ensure that a second process Q
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
 
+We ensured this by pinning frames when recieved by a process for loading. These 
+pinned frames arent considered by the clock algorithm and are only unpinned after the loading process
+finishes, therefore a frame cannot be given to process Q while pinned and will be unable to perform actions, 
+such as evicting a frame that is curently being read. 
+
 >> B8: Explain how you handle access to paged-out pages that occur
 >> during system calls.  Do you use page faults to bring in pages (as
 >> in user programs), or do you have a mechanism for "locking" frames
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
+
+In our program, we use page faults to bring in pages, as our kernel code accesses user data
+using the user virtual address. Our method for checking valid user addresses in project 2 was
+extending to our page faulting code. Our page fault handler will first try to pull the page, if 
+page isnt valid, we see then see if we need to extend the stack as explained in B4. If in the user context, we kill the process,
+if in kernel we check for an error to the kernel.
 
 ---- RATIONALE ----
 
@@ -204,6 +225,13 @@ is above the user stack, and is within 32 bytes of the current user stack.
 >> possibility for deadlock but allows for high parallelism.  Explain
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
+
+We implemented an external frame lock, as well as used palloc functions that have locks
+implemented within them to keep implementation simple. Having just one frame table lock 
+is limiting parallel memory access between multiple processes. If we wanted to achieve better parallelism,
+we would need to implement a more complex lock system. A single global frame lock allows circular 
+dependencies to easibly be kept in check, while the additions of 
+bitmap for swaps and use of functions like palloc_get_page allow for various race conditions to be met. 
 
                            SURVEY QUESTIONS
                            ================
